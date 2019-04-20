@@ -1,60 +1,126 @@
-version: '2'
+version: '3'
 
 services:
   rabbitmq:
-    image: rabbitmq:3-management
+    build:
+      context: ./Docker/RabbitMQ/
+      dockerfile: Dockerfile
+    image: rabbitmq:3-management-delay
     ports:
       - "5672:5672"
       - "15672:15672"
-    restart: always
+    volumes:
+      - rabbitmq-home:/var/lib/rabbitmq
 
   eventstore:
     image: eventstore/eventstore
     ports:
       - "1113:1113" # TCP (default 1113)
       - "2113:2113" # HTTP (default 2113)
+    volumes:
+      - eventstore-data:/var/lib/eventstore
     environment:
       - EVENTSTORE_RUN_PROJECTIONS=ALL
       - EVENTSTORE_START_STANDARD_PROJECTIONS=TRUE
-    restart: always
     
   # Need to give 4GB of memory to Docker for SQL
   sqlserver:
     image: microsoft/mssql-server-linux
     ports:
       - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=password
-
-  MySql:
+      - SA_PASSWORD=Password123!
+  mysql:
     image: mysql
     ports:
       - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: "root"
   
-  redis-master:
+  redis:
     image: redis
     ports:
       - "6379:6379"
-    restart: always
-
-  redis-slave:
-    image: redis
-    command: redis-server --slaveof redis-master 6379
-    restart: always
-
-  redis-sentinel:
-    build: ./samples/containers/redis-sentinel
-    links:
-      - redis-master
-    restart: always
-
-  Postgres:
+    
+  postgres:
     image: postgres
-    restart: always
+    restart: on-failure
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - postgres-config:/etc/postgresql
+      - postgres-logs:/var/log/postgresql
     ports:
       - "5432:5432"
     environment:
       POSTGRES_PASSWORD: password
+
+  dynamo:
+    image: dwmkerr/dynamodb
+    ports:
+      - "8000:8000"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    hostname: zookeeper
+    container_name: zookeeper
+    networks:
+      - kafka
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-enterprise-kafka:latest
+    hostname: kafka
+    container_name: kafka
+    networks:
+      - kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+networks:
+  kafka:
+    driver: bridge
+
+volumes:
+  rabbitmq-home:
+    driver: local
+  redis-master-data:
+    driver: local
+  redis-slave-data:
+    driver: local
+  eventstore-data:
+    driver: local
+  redis-s1-data:
+    driver: local
+  redis-s2-data:
+    driver: local
+  redis-s3-data:
+    driver: local
+  mysql-data:
+    driver: local
+  sqlserver-data:
+    driver: local
+  postgres-data:
+    driver: local
+  postgres-config:
+    driver: local
+  postgres-logs:
+    driver: local
+  dynamodb:
+    driver: local
+  

@@ -25,13 +25,13 @@ THE SOFTWARE. */
 using System;
 using FluentAssertions;
 using Paramore.Brighter.MessagingGateway.RMQ;
-using Paramore.Brighter.MessagingGateway.RMQ.MessagingGatewayConfiguration;
 using Paramore.Brighter.Tests.MessagingGateway.TestDoubles;
 using RabbitMQ.Client.Exceptions;
 using Xunit;
 
 namespace Paramore.Brighter.Tests.MessagingGateway.RMQ 
 {
+    [Collection("RMQ")]
     [Trait("Category", "RMQ")]
     public class RmqMessageConsumerConnectionClosedTests : IDisposable
     {
@@ -43,7 +43,7 @@ namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
 
         public RmqMessageConsumerConnectionClosedTests()
         {
-            var messageHeader = new MessageHeader(Guid.NewGuid(), "test2", MessageType.MT_COMMAND);
+            var messageHeader = new MessageHeader(Guid.NewGuid(),  Guid.NewGuid().ToString(), MessageType.MT_COMMAND);
 
             messageHeader.UpdateHandledCount();
             _sentMessage = new Message(messageHeader, new MessageBody("test content"));
@@ -55,10 +55,9 @@ namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
             };
 
             _sender = new RmqMessageProducer(rmqConnection);
-            _receiver = new RmqMessageConsumer(rmqConnection, _sentMessage.Header.Topic, _sentMessage.Header.Topic, false, 1, false);
+            _receiver = new RmqMessageConsumer(rmqConnection, _sentMessage.Header.Topic, _sentMessage.Header.Topic, false, false);
             _badReceiver = new AlreadyClosedRmqMessageConsumer(rmqConnection, _sentMessage.Header.Topic, _sentMessage.Header.Topic, false, 1, false);
 
-            _receiver.Purge();
             _sender.Send(_sentMessage);
         }
 
@@ -69,13 +68,13 @@ namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
 
             //_should_return_a_channel_failure_exception
             _firstException.Should().BeOfType<ChannelFailureException>();
+            
             //_should_return_an_explainging_inner_exception
             _firstException.InnerException.Should().BeOfType<AlreadyClosedException>();
         }
 
         public void Dispose()
         {
-            _receiver.Purge();
             _sender.Dispose();
             _receiver.Dispose();
         }

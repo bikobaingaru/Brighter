@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -22,6 +22,8 @@ THE SOFTWARE. */
 
 #endregion
 
+using System.Data;
+
 namespace Paramore.Brighter
 {
     /// <summary>
@@ -38,10 +40,8 @@ namespace Paramore.Brighter
         /// <summary>
         /// Creates the input channel.
         /// </summary>
-        /// <param name="channelName">Name of the channel.</param>
-        /// <param name="routingKey"></param>
-        /// <param name="isDurable"></param>
+        /// <param name="connection">The parameters with which to create the channel for the transport</param>
         /// <returns>IAmAnInputChannel.</returns>
-        IAmAChannel CreateInputChannel(string channelName, string routingKey, bool isDurable = false, ushort preFetchSize = 1, bool highAvailability = false);
+        IAmAChannel CreateChannel(Connection connection);
     }
 }

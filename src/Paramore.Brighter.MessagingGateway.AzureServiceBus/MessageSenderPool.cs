@@ -42,7 +42,7 @@ namespace Paramore.Brighter.MessagingGateway.AzureServiceBus
                 return _senders[topic];
 
             Address address = new Address("amqp://guest:guest@localhost:5672");
-            Connection connection = Connection.Factory.CreateAsync(address).Result;
+            Amqp.Connection connection = Amqp.Connection.Factory.CreateAsync(address).Result;
             Session session = new Session(connection);
             SenderLink sender = new SenderLink(session, "sender", topic);
 
@@ -75,10 +75,10 @@ namespace Paramore.Brighter.MessagingGateway.AzureServiceBus
             }
         }
 
-        private void Sender_Closed(AmqpObject sender, Amqp.Framing.Error error)
+        private void Sender_Closed(IAmqpObject sender, Amqp.Framing.Error error)
         {
             if (!_closing)
-            {
+            { 
                 var senderLink = (SenderLink) sender;
                 var key =
                     _senders.ToArray().Where(pair => pair.Value == senderLink).Select(pair => pair.Key).FirstOrDefault();

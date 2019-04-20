@@ -24,7 +24,6 @@ THE SOFTWARE. */
 
 using System;
 using Paramore.Brighter.MessagingGateway.RMQ;
-using Paramore.Brighter.MessagingGateway.RMQ.MessagingGatewayConfiguration;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Exceptions;
 
@@ -36,7 +35,7 @@ namespace Paramore.Brighter.Tests.MessagingGateway.TestDoubles
 
     internal class BrokerUnreachableRmqMessageConsumer : RmqMessageConsumer
     {
-        public BrokerUnreachableRmqMessageConsumer(RmqMessagingGatewayConnection connection, string queueName, string routingKey, bool isDurable, ushort preFetchSize, bool isHighAvailability) : base(connection, queueName, routingKey, isDurable, preFetchSize, isHighAvailability) { }
+        public BrokerUnreachableRmqMessageConsumer(RmqMessagingGatewayConnection connection, string queueName, string routingKey, bool isDurable, ushort preFetchSize, bool isHighAvailability) : base(connection, queueName, routingKey, isDurable, isHighAvailability) { }
 
         protected override void ConnectToBroker()
         {
@@ -46,9 +45,9 @@ namespace Paramore.Brighter.Tests.MessagingGateway.TestDoubles
 
     internal class AlreadyClosedRmqMessageConsumer : RmqMessageConsumer
     {
-        public AlreadyClosedRmqMessageConsumer(RmqMessagingGatewayConnection connection, string queueName, string routingKey, bool isDurable, ushort preFetchSize, bool isHighAvailability) : base(connection, queueName, routingKey, isDurable, preFetchSize, isHighAvailability) { }
+        public AlreadyClosedRmqMessageConsumer(RmqMessagingGatewayConnection connection, string queueName, string routingKey, bool isDurable, ushort preFetchSize, bool isHighAvailability) : base(connection, queueName, routingKey, isDurable, isHighAvailability) { }
 
-        protected override void CreateConsumer()
+        protected override void EnsureChannelBind()
         {
             throw new AlreadyClosedException(new ShutdownEventArgs(ShutdownInitiator.Application, 0, "test"));
         }
@@ -56,9 +55,9 @@ namespace Paramore.Brighter.Tests.MessagingGateway.TestDoubles
 
     internal class OperationInterruptedRmqMessageConsumer : RmqMessageConsumer
     {
-        public OperationInterruptedRmqMessageConsumer(RmqMessagingGatewayConnection connection, string queueName, string routingKey, bool isDurable, ushort preFetchSize, bool isHighAvailability) : base(connection, queueName, routingKey, isDurable,preFetchSize,isHighAvailability) { }
+        public OperationInterruptedRmqMessageConsumer(RmqMessagingGatewayConnection connection, string queueName, string routingKey, bool isDurable, ushort preFetchSize, bool isHighAvailability) : base(connection, queueName, routingKey, isDurable,isHighAvailability) { }
 
-        protected override void CreateConsumer()
+        protected override void EnsureChannelBind()
         {
             throw new OperationInterruptedException(new ShutdownEventArgs(ShutdownInitiator.Application, 0, "test"));
         }
@@ -66,9 +65,9 @@ namespace Paramore.Brighter.Tests.MessagingGateway.TestDoubles
 
     internal class NotSupportedRmqMessageConsumer : RmqMessageConsumer
     {
-        public NotSupportedRmqMessageConsumer(RmqMessagingGatewayConnection connection, string queueName, string routingKey, bool isDurable, ushort preFetchSize, bool isHighAvailability) : base(connection, queueName, routingKey, isDurable, preFetchSize, isHighAvailability) { }
+        public NotSupportedRmqMessageConsumer(RmqMessagingGatewayConnection connection, string queueName, string routingKey, bool isDurable, ushort preFetchSize, bool isHighAvailability) : base(connection, queueName, routingKey, isDurable, isHighAvailability) { }
 
-        protected override void CreateConsumer()
+        protected override void EnsureChannelBind()
         {
             throw new NotSupportedException();
         }

@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -24,71 +24,62 @@ THE SOFTWARE. */
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Paramore.Brighter.MessagingGateway.RMQ;
-using Paramore.Brighter.MessagingGateway.RMQ.MessagingGatewayConfiguration;
 using Xunit;
 
 namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
 {
+    [Collection("RMQ")]
     [Trait("Category", "RMQ")]
     public class RmqMessageProducerDelayedMessageTests : IDisposable
     {
-        private readonly IAmAMessageProducerSupportingDelay _messageProducer;
+        private readonly IAmAMessageProducer _messageProducer;
         private readonly IAmAMessageConsumer _messageConsumer;
         private readonly Message _message;
-        private readonly TestRMQListener _client;
-        private string _messageBody;
-        private bool _immediateReadIsNull;
-        private IDictionary<string, object> _messageHeaders;
 
         public RmqMessageProducerDelayedMessageTests()
         {
-            var header = new MessageHeader(Guid.NewGuid(), "test3", MessageType.MT_COMMAND);
+            var header = new MessageHeader(Guid.NewGuid(), Guid.NewGuid().ToString(), MessageType.MT_COMMAND);
             var originalMessage = new Message(header, new MessageBody("test3 content"));
 
-            var mutatedHeader = new MessageHeader(header.Id, "test3", MessageType.MT_COMMAND);
+            var mutatedHeader = new MessageHeader(header.Id, Guid.NewGuid().ToString(), MessageType.MT_COMMAND);
             mutatedHeader.Bag.Add(HeaderNames.DELAY_MILLISECONDS, 1000);
             _message = new Message(mutatedHeader, originalMessage.Body);
 
             var rmqConnection = new RmqMessagingGatewayConnection
             {
                 AmpqUri = new AmqpUriSpecification(new Uri("amqp://guest:guest@localhost:5672/%2f")),
-                Exchange = new Exchange("paramore.brighter.exchange", supportDelay: true)
+                Exchange = new Exchange("paramore.delay.brighter.exchange", supportDelay: true)
             };
 
             _messageProducer = new RmqMessageProducer(rmqConnection);
-            _messageConsumer = new RmqMessageConsumer(rmqConnection, _message.Header.Topic, _message.Header.Topic, false, 1, false);
-            _messageConsumer.Purge();
+            _messageConsumer = new RmqMessageConsumer(rmqConnection, _message.Header.Topic, _message.Header.Topic, false, false);
 
-            _client = new TestRMQListener(rmqConnection, _message.Header.Topic);
+            new QueueFactory(rmqConnection, _message.Header.Topic).Create(3000);
         }
 
         [Fact]
         public void When_reading_a_delayed_message_via_the_messaging_gateway()
         {
-            _messageProducer.SendWithDelay(_message, 1000);
+            _messageProducer.SendWithDelay(_message, 3000);
 
-            var immediateResult = _client.Listen(0, true);
-            _immediateReadIsNull = immediateResult == null;
-
-            var delayedResult = _client.Listen(2000);
-            _messageBody = delayedResult.GetBody();
-            _messageHeaders = delayedResult.GetHeaders();
+            var immediateResult = _messageConsumer.Receive(0).First();
+            var deliveredWithoutWait = immediateResult.Header.MessageType == MessageType.MT_NONE;
 
             //_should_have_not_been_able_get_message_before_delay
-            _immediateReadIsNull.Should().BeTrue();
-            //_should_send_a_message_via_rmq_with_the_matching_body
-            _messageBody.Should().Be(_message.Body.Value);
-            //_should_send_a_message_via_rmq_with_delay_header
-            _messageHeaders.Keys.Should().Contain(HeaderNames.DELAY_MILLISECONDS);
-            //_should_received_a_message_via_rmq_with_delayed_header
-            _messageHeaders.Keys.Should().Contain(HeaderNames.DELAYED_MILLISECONDS);
-        }
+            deliveredWithoutWait.Should().BeTrue();
+            
+            var delayedResult = _messageConsumer.Receive(10000).First();
+             
+
+           //_should_send_a_message_via_rmq_with_the_matching_body
+            delayedResult.Body.Value.Should().Be(_message.Body.Value);
+       }
 
         public void Dispose()
         {
-            _messageConsumer.Purge();
             _messageProducer.Dispose();
         }
     }

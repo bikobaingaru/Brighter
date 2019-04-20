@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -27,8 +27,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Paramore.Brighter.FeatureSwitch;
 using Paramore.Brighter.Logging;
 using Polly;
+using Polly.Registry;
 
 namespace Paramore.Brighter
 {
@@ -46,18 +48,22 @@ namespace Paramore.Brighter
         private readonly IAmAHandlerFactory _handlerFactory;
         private readonly IAmAHandlerFactoryAsync _asyncHandlerFactory;
         private readonly IAmARequestContextFactory _requestContextFactory;
-        private readonly IAmAPolicyRegistry _policyRegistry;
+        private readonly IPolicyRegistry<string>  _policyRegistry;
         private readonly int _messageStoreTimeout;
-        private readonly IAmAMessageStore<Message> _messageStore;
-        private readonly IAmAMessageStoreAsync<Message> _asyncMessageStore;
+        private readonly IAmAnOutbox<Message> _outBox;
+        private readonly IAmAnOutboxAsync<Message> _asyncOutbox;
+        private readonly InboxConfiguration _inboxConfiguration;
+        private readonly IAmAFeatureSwitchRegistry _featureSwitchRegistry;
+
         // the following are not readonly to allow setting them to null on dispose
         private IAmAMessageProducer _messageProducer;
+        private IAmAChannelFactory _responseChannelFactory;
         private IAmAMessageProducerAsync _asyncMessageProducer;
         private bool _disposed;
 
         /// <summary>
         /// Use this as an identifier for your <see cref="Policy"/> that determines for how long to break the circuit when communication with the Work Queue fails.
-        /// Register that policy with your <see cref="IAmAPolicyRegistry"/> such as <see cref="PolicyRegistry"/>
+        /// Register that policy with your <see cref="IPolicyRegistry{TKey}"/> such as <see cref="PolicyRegistry"/>
         /// You can use this an identifier for you own policies, if your generic policy is the same as your Work Queue policy.
         /// </summary>
         public const string CIRCUITBREAKER = "Paramore.Brighter.CommandProcessor.CircuitBreaker";
@@ -70,13 +76,13 @@ namespace Paramore.Brighter
 
         /// <summary>
         /// Use this as an identifier for your <see cref="Policy"/> that determines for how long to break the circuit when communication with the Work Queue fails.
-        /// Register that policy with your <see cref="IAmAPolicyRegistry"/> such as <see cref="PolicyRegistry"/>
+        /// Register that policy with your <see cref="IPolicyRegistry{TKey}"/> such as <see cref="PolicyRegistry"/>
         /// You can use this an identifier for you own policies, if your generic policy is the same as your Work Queue policy.
         /// </summary>
         public const string CIRCUITBREAKERASYNC = "Paramore.Brighter.CommandProcessor.CircuitBreaker.Async";
         /// <summary>
         /// Use this as an identifier for your <see cref="Policy"/> that determines the retry strategy when communication with the Work Queue fails.
-        /// Register that policy with your <see cref="IAmAPolicyRegistry"/> such as <see cref="PolicyRegistry"/>
+        /// Register that policy with your <see cref="IPolicyRegistry{TKey}"/> such as <see cref="PolicyRegistry"/>
         /// You can use this an identifier for you own policies, if your generic policy is the same as your Work Queue policy.
         /// </summary>
         public const string RETRYPOLICYASYNC = "Paramore.Brighter.CommandProcessor.RetryPolicy.Async";
@@ -90,18 +96,24 @@ namespace Paramore.Brighter
         /// <param name="asyncHandlerFactory">The async handler factory.</param>
         /// <param name="requestContextFactory">The request context factory.</param>
         /// <param name="policyRegistry">The policy registry.</param>
+        /// <param name="featureSwitchRegistry">The feature switch config provider.</param>
+        /// <param name="inboxConfiguration">Do we want to insert an inbox handler into pipelines without the attribute. Null (default = no), yes = how to configure</param>
         public CommandProcessor(
             IAmASubscriberRegistry subscriberRegistry,
             IAmAHandlerFactory handlerFactory,
             IAmAHandlerFactoryAsync asyncHandlerFactory,
             IAmARequestContextFactory requestContextFactory,
-            IAmAPolicyRegistry policyRegistry)
+            IPolicyRegistry<string> policyRegistry,
+            IAmAFeatureSwitchRegistry featureSwitchRegistry = null,
+            InboxConfiguration inboxConfiguration = null)
         {
             _subscriberRegistry = subscriberRegistry;
             _handlerFactory = handlerFactory;
             _asyncHandlerFactory = asyncHandlerFactory;
             _requestContextFactory = requestContextFactory;
             _policyRegistry = policyRegistry;
+            _featureSwitchRegistry = featureSwitchRegistry;
+            _inboxConfiguration = inboxConfiguration;
         }
 
         /// <summary>
@@ -112,16 +124,23 @@ namespace Paramore.Brighter
         /// <param name="handlerFactory">The handler factory.</param>
         /// <param name="requestContextFactory">The request context factory.</param>
         /// <param name="policyRegistry">The policy registry.</param>
+        /// <param name="featureSwitchRegistry">The feature switch config provider.</param>
+        /// <param name="inboxConfiguration">Do we want to insert an inbox handler into pipelines without the attribute. Null (default = no), yes = how to configure</param>
         public CommandProcessor(
             IAmASubscriberRegistry subscriberRegistry,
             IAmAHandlerFactory handlerFactory,
             IAmARequestContextFactory requestContextFactory,
-            IAmAPolicyRegistry policyRegistry)
+            IPolicyRegistry<string>  policyRegistry,
+            IAmAFeatureSwitchRegistry featureSwitchRegistry = null,
+            InboxConfiguration inboxConfiguration = null
+            )
         {
             _subscriberRegistry = subscriberRegistry;
             _handlerFactory = handlerFactory;
             _requestContextFactory = requestContextFactory;
             _policyRegistry = policyRegistry;
+            _featureSwitchRegistry = featureSwitchRegistry;
+            _inboxConfiguration = inboxConfiguration;
         }
 
         /// <summary>
@@ -132,16 +151,22 @@ namespace Paramore.Brighter
         /// <param name="asyncHandlerFactory">The async handler factory.</param>
         /// <param name="requestContextFactory">The request context factory.</param>
         /// <param name="policyRegistry">The policy registry.</param>
+        /// <param name="featureSwitchRegistry">The feature switch config provider.</param>
+        /// <param name="inboxConfiguration">Do we want to insert an inbox handler into pipelines without the attribute. Null (default = no), yes = how to configure</param>
         public CommandProcessor(
             IAmASubscriberRegistry subscriberRegistry,
             IAmAHandlerFactoryAsync asyncHandlerFactory,
             IAmARequestContextFactory requestContextFactory,
-            IAmAPolicyRegistry policyRegistry)
+            IPolicyRegistry<string>  policyRegistry,
+            IAmAFeatureSwitchRegistry featureSwitchRegistry = null,
+            InboxConfiguration inboxConfiguration = null)
         {
             _subscriberRegistry = subscriberRegistry;
             _asyncHandlerFactory = asyncHandlerFactory;
             _requestContextFactory = requestContextFactory;
             _policyRegistry = policyRegistry;
+            _featureSwitchRegistry = featureSwitchRegistry;
+            _inboxConfiguration = inboxConfiguration;
         }
 
         /// <summary>
@@ -151,23 +176,29 @@ namespace Paramore.Brighter
         /// <param name="requestContextFactory">The request context factory.</param>
         /// <param name="policyRegistry">The policy registry.</param>
         /// <param name="mapperRegistry">The mapper registry.</param>
-        /// <param name="messageStore">The message store.</param>
+        /// <param name="outBox">The outbox.</param>
         /// <param name="messageProducer">The messaging gateway.</param>
         /// <param name="messageStoreTimeout">How long should we wait to write to the message store</param>
+        /// <param name="featureSwitchRegistry">The feature switch config provider.</param>
+        /// <param name="inboxConfiguration">Do we want to insert an inbox handler into pipelines without the attribute. Null (default = no), yes = how to configure</param>
         public CommandProcessor(
             IAmARequestContextFactory requestContextFactory,
-            IAmAPolicyRegistry policyRegistry,
+            IPolicyRegistry<string>  policyRegistry,
             IAmAMessageMapperRegistry mapperRegistry,
-            IAmAMessageStore<Message> messageStore,
+            IAmAnOutbox<Message> outBox,
             IAmAMessageProducer messageProducer,
-            int messageStoreTimeout = 300)
+            int messageStoreTimeout = 300,
+            IAmAFeatureSwitchRegistry featureSwitchRegistry = null,
+            InboxConfiguration inboxConfiguration = null)
         {
             _requestContextFactory = requestContextFactory;
             _policyRegistry = policyRegistry;
             _messageStoreTimeout = messageStoreTimeout;
             _mapperRegistry = mapperRegistry;
-            _messageStore = messageStore;
+            _outBox = outBox;
             _messageProducer = messageProducer;
+            _featureSwitchRegistry = featureSwitchRegistry;
+            _inboxConfiguration = inboxConfiguration;
         }
 
         /// <summary>
@@ -177,52 +208,64 @@ namespace Paramore.Brighter
         /// <param name="requestContextFactory">The request context factory.</param>
         /// <param name="policyRegistry">The policy registry.</param>
         /// <param name="mapperRegistry">The mapper registry.</param>
-        /// <param name="asyncMessageStore">The message store supporting async/await.</param>
+        /// <param name="asyncOutbox">The outbox supporting async/await.</param>
         /// <param name="asyncMessageProducer">The messaging gateway supporting async/await.</param>
         /// <param name="messageStoreTimeout">How long should we wait to write to the message store</param>
+        /// <param name="featureSwitchRegistry">The feature switch config provider.</param>
+        /// <param name="inboxConfiguration">Do we want to insert an inbox handler into pipelines without the attribute. Null (default = no), yes = how to configure</param>
         public CommandProcessor(
             IAmARequestContextFactory requestContextFactory,
-            IAmAPolicyRegistry policyRegistry,
+            IPolicyRegistry<string>  policyRegistry,
             IAmAMessageMapperRegistry mapperRegistry,
-            IAmAMessageStoreAsync<Message> asyncMessageStore,
+            IAmAnOutboxAsync<Message> asyncOutbox,
             IAmAMessageProducerAsync asyncMessageProducer,
-            int messageStoreTimeout = 300)
+            int messageStoreTimeout = 300,
+            IAmAFeatureSwitchRegistry featureSwitchRegistry = null,
+            InboxConfiguration inboxConfiguration = null)
         {
             _requestContextFactory = requestContextFactory;
             _policyRegistry = policyRegistry;
             _messageStoreTimeout = messageStoreTimeout;
             _mapperRegistry = mapperRegistry;
-            _asyncMessageStore = asyncMessageStore;
+            _asyncOutbox = asyncOutbox;
             _asyncMessageProducer = asyncMessageProducer;
+            _featureSwitchRegistry = featureSwitchRegistry;
+            _inboxConfiguration = inboxConfiguration;
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CommandProcessor"/> class.
-        /// Use this constructor when both task queue and command processor support is required
+        /// Use this constructor when both rpc and command processor support is required
         /// </summary>
         /// <param name="subscriberRegistry">The subscriber registry.</param>
         /// <param name="handlerFactory">The handler factory.</param>
         /// <param name="requestContextFactory">The request context factory.</param>
         /// <param name="policyRegistry">The policy registry.</param>
         /// <param name="mapperRegistry">The mapper registry.</param>
-        /// <param name="messageStore">The message store.</param>
         /// <param name="messageProducer">The messaging gateway.</param>
+        /// <param name="responseChannelFactory">If we are expecting a response, then we need a channel to listen on</param>
         /// <param name="messageStoreTimeout">How long should we wait to write to the message store</param>
+        /// <param name="featureSwitchRegistry">The feature switch config provider.</param>
+        /// <param name="inboxConfiguration">Do we want to insert an inbox handler into pipelines without the attribute. Null (default = no), yes = how to configure</param>
         public CommandProcessor(
             IAmASubscriberRegistry subscriberRegistry,
             IAmAHandlerFactory handlerFactory,
             IAmARequestContextFactory requestContextFactory,
-            IAmAPolicyRegistry policyRegistry,
+            IPolicyRegistry<string>  policyRegistry,
             IAmAMessageMapperRegistry mapperRegistry,
-            IAmAMessageStore<Message> messageStore,
             IAmAMessageProducer messageProducer,
-            int messageStoreTimeout = 300)
+            int messageStoreTimeout = 300,
+            IAmAFeatureSwitchRegistry featureSwitchRegistry = null,
+            IAmAChannelFactory responseChannelFactory = null,
+            InboxConfiguration inboxConfiguration = null)
             : this(subscriberRegistry, handlerFactory, requestContextFactory, policyRegistry)
         {
             _mapperRegistry = mapperRegistry;
-            _messageStore = messageStore;
             _messageProducer = messageProducer;
             _messageStoreTimeout = messageStoreTimeout;
+            _featureSwitchRegistry = featureSwitchRegistry;
+            _responseChannelFactory = responseChannelFactory;
+            _inboxConfiguration = inboxConfiguration;
         }
 
         /// <summary>
@@ -234,24 +277,30 @@ namespace Paramore.Brighter
         /// <param name="requestContextFactory">The request context factory.</param>
         /// <param name="policyRegistry">The policy registry.</param>
         /// <param name="mapperRegistry">The mapper registry.</param>
-        /// <param name="asyncMessageStore">The message store supporting async/await.</param>
+        /// <param name="asyncOutbox">The outbox supporting async/await.</param>
         /// <param name="asyncMessageProducer">The messaging gateway supporting async/await.</param>
         /// <param name="messageStoreTimeout">How long should we wait to write to the message store</param>
+        /// <param name="featureSwitchRegistry">The feature switch config provider.</param>
+           /// <param name="inboxConfiguration">Do we want to insert an inbox handler into pipelines without the attribute. Null (default = no), yes = how to configure</param>
         public CommandProcessor(
             IAmASubscriberRegistry subscriberRegistry,
             IAmAHandlerFactoryAsync asyncHandlerFactory,
             IAmARequestContextFactory requestContextFactory,
-            IAmAPolicyRegistry policyRegistry,
+            IPolicyRegistry<string>  policyRegistry,
             IAmAMessageMapperRegistry mapperRegistry,
-            IAmAMessageStoreAsync<Message> asyncMessageStore,
+            IAmAnOutboxAsync<Message> asyncOutbox,
             IAmAMessageProducerAsync asyncMessageProducer,
-            int messageStoreTimeout = 300)
-            : this(subscriberRegistry, asyncHandlerFactory, requestContextFactory, policyRegistry)
+            int messageStoreTimeout = 300,
+            IAmAFeatureSwitchRegistry featureSwitchRegistry = null,
+            InboxConfiguration inboxConfiguration = null)
+            : this(subscriberRegistry, asyncHandlerFactory, requestContextFactory, policyRegistry, featureSwitchRegistry)
         {
             _mapperRegistry = mapperRegistry;
-            _asyncMessageStore = asyncMessageStore;
+            _asyncOutbox = asyncOutbox;
             _asyncMessageProducer = asyncMessageProducer;
             _messageStoreTimeout = messageStoreTimeout;
+            _featureSwitchRegistry = featureSwitchRegistry;
+            _inboxConfiguration = inboxConfiguration;
         }
 
         /// <summary>
@@ -264,31 +313,36 @@ namespace Paramore.Brighter
         /// <param name="requestContextFactory">The request context factory.</param>
         /// <param name="policyRegistry">The policy registry.</param>
         /// <param name="mapperRegistry">The mapper registry.</param>
-        /// <param name="messageStore">The message store.</param>
-        /// <param name="asyncMessageStore">The message store supporting async/await.</param>
+        /// <param name="outBox">The outbox.</param>
+        /// <param name="asyncOutbox">The message store supporting async/await.</param>
         /// <param name="messageProducer">The messaging gateway.</param>
         /// <param name="asyncMessageProducer">The messaging gateway supporting async/await.</param>
         /// <param name="messageStoreTimeout">How long should we wait to write to the message store</param>
-        public CommandProcessor(
+        /// <param name="featureSwitchRegistry">The feature switch config provider.</param>
+        /// <param name="inboxConfiguration">Do we want to insert an inbox handler into pipelines without the attribute. Null (default = no), yes = how to configure</param>
+         public CommandProcessor(
             IAmASubscriberRegistry subscriberRegistry,
             IAmAHandlerFactory handlerFactory,
             IAmAHandlerFactoryAsync asyncHandlerFactory,
             IAmARequestContextFactory requestContextFactory,
-            IAmAPolicyRegistry policyRegistry,
+            IPolicyRegistry<string>  policyRegistry,
             IAmAMessageMapperRegistry mapperRegistry,
-            IAmAMessageStore<Message> messageStore,
-            IAmAMessageStoreAsync<Message> asyncMessageStore,
+            IAmAnOutbox<Message> outBox,
+            IAmAnOutboxAsync<Message> asyncOutbox,
             IAmAMessageProducer messageProducer,
             IAmAMessageProducerAsync asyncMessageProducer,
-            int messageStoreTimeout = 300)
-            : this(subscriberRegistry, handlerFactory, asyncHandlerFactory, requestContextFactory, policyRegistry)
+            int messageStoreTimeout = 300,
+            IAmAFeatureSwitchRegistry featureSwitchRegistry = null,
+            InboxConfiguration inboxConfiguration = null)
+            : this(subscriberRegistry, handlerFactory, asyncHandlerFactory, requestContextFactory, policyRegistry, featureSwitchRegistry)
         {
             _mapperRegistry = mapperRegistry;
-            _messageStore = messageStore;
-            _asyncMessageStore = asyncMessageStore;
+            _outBox = outBox;
+            _asyncOutbox = asyncOutbox;
             _messageProducer = messageProducer;
             _asyncMessageProducer = asyncMessageProducer;
             _messageStoreTimeout = messageStoreTimeout;
+            _inboxConfiguration = inboxConfiguration;
         }
 
         /// <summary>
@@ -305,8 +359,9 @@ namespace Paramore.Brighter
 
             var requestContext = _requestContextFactory.Create();
             requestContext.Policies = _policyRegistry;
+            requestContext.FeatureSwitches = _featureSwitchRegistry;
 
-            using (var builder = new PipelineBuilder<T>(_subscriberRegistry, _handlerFactory))
+            using (var builder = new PipelineBuilder<T>(_subscriberRegistry, _handlerFactory, _inboxConfiguration))
             {
                 _logger.Value.InfoFormat("Building send pipeline for command: {0} {1}", command.GetType(), command.Id);
                 var handlerChain = builder.Build(requestContext);
@@ -332,8 +387,9 @@ namespace Paramore.Brighter
 
             var requestContext = _requestContextFactory.Create();
             requestContext.Policies = _policyRegistry;
+            requestContext.FeatureSwitches = _featureSwitchRegistry;
 
-            using (var builder = new PipelineBuilder<T>(_subscriberRegistry, _asyncHandlerFactory))
+            using (var builder = new PipelineBuilder<T>(_subscriberRegistry, _asyncHandlerFactory, _inboxConfiguration))
             {
                 _logger.Value.InfoFormat("Building send async pipeline for command: {0} {1}", command.GetType(), command.Id);
                 var handlerChain = builder.BuildAsync(requestContext, continueOnCapturedContext);
@@ -360,8 +416,9 @@ namespace Paramore.Brighter
 
             var requestContext = _requestContextFactory.Create();
             requestContext.Policies = _policyRegistry;
+            requestContext.FeatureSwitches = _featureSwitchRegistry;
 
-            using (var builder = new PipelineBuilder<T>(_subscriberRegistry, _handlerFactory))
+            using (var builder = new PipelineBuilder<T>(_subscriberRegistry, _handlerFactory, _inboxConfiguration ))
             {
                 _logger.Value.InfoFormat("Building send pipeline for event: {0} {1}", @event.GetType(), @event.Id);
                 var handlerChain = builder.Build(requestContext);
@@ -409,8 +466,9 @@ namespace Paramore.Brighter
 
             var requestContext = _requestContextFactory.Create();
             requestContext.Policies = _policyRegistry;
+            requestContext.FeatureSwitches = _featureSwitchRegistry;
 
-            using (var builder = new PipelineBuilder<T>(_subscriberRegistry, _asyncHandlerFactory))
+            using (var builder = new PipelineBuilder<T>(_subscriberRegistry, _asyncHandlerFactory, _inboxConfiguration))
             {
                 _logger.Value.InfoFormat("Building send async pipeline for event: {0} {1}", @event.GetType(), @event.Id);
 
@@ -451,24 +509,7 @@ namespace Paramore.Brighter
         /// <exception cref="System.ArgumentOutOfRangeException"></exception>
         public void Post<T>(T request) where T : class, IRequest
         {
-            _logger.Value.InfoFormat("Decoupled invocation of request: {0} {1}", request.GetType(), request.Id);
-
-            if (_messageStore == null)
-                throw new InvalidOperationException("No message store defined.");
-            if (_messageProducer == null)
-                throw new InvalidOperationException("No mesage producer defined.");
-
-            var messageMapper = _mapperRegistry.Get<T>();
-            if (messageMapper == null)
-                throw new ArgumentOutOfRangeException($"No message mapper registered for messages of type: {typeof(T)}");
-
-            var message = messageMapper.MapToMessage(request);
-
-            RetryAndBreakCircuit(() =>
-            {
-                _messageStore.Add(message, _messageStoreTimeout);
-                _messageProducer.Send(message);
-            });
+            ClearOutbox(DepositPost(request));
         }
 
         /// <summary>
@@ -487,12 +528,57 @@ namespace Paramore.Brighter
         /// <returns>awaitable <see cref="Task"/>.</returns>
         public async Task PostAsync<T>(T request, bool continueOnCapturedContext = false, CancellationToken cancellationToken = default(CancellationToken)) where T : class, IRequest
         {
-            _logger.Value.InfoFormat("Async decoupled invocation of request: {0} {1}", request.GetType(), request.Id);
+            var messageId = await DepositPostAsync(request, continueOnCapturedContext, cancellationToken);
+            await ClearOutboxAsync(new Guid[]{messageId}, continueOnCapturedContext, cancellationToken);
+        }
 
-            if (_asyncMessageStore == null)
+        /// <summary>
+        /// Adds a message into the message store, and returns the id of the saved message.
+        /// Intended for use with the Outbox pattern: http://gistlabs.com/2014/05/the-outbox/ normally you include the
+        /// call to DepositPostBox within the scope of the transaction to write corresponding entity state to your
+        /// database, that you want to signal via the request to downstream consumers
+        /// Pass deposited Guid to <see cref="ClearOutbox"/> 
+        /// </summary>
+        /// <param name="request">The request to save to the message store</param>
+        /// <typeparam name="T">The type of the request</typeparam>
+        /// <returns></returns>
+        public Guid DepositPost<T>(T request) where T : class, IRequest
+        {
+            _logger.Value.InfoFormat("Save request: {0} {1}", request.GetType(), request.Id);
+
+            if (_outBox == null)
+                throw new InvalidOperationException("No message store defined.");
+
+            var messageMapper = _mapperRegistry.Get<T>();
+            if (messageMapper == null)
+                throw new ArgumentOutOfRangeException($"No message mapper registered for messages of type: {typeof(T)}");
+
+            var message = messageMapper.MapToMessage(request);
+
+            RetryAndBreakCircuit(() =>
+            {
+                _outBox.Add(message, _messageStoreTimeout);
+            });
+
+            return message.Id;
+        }
+        
+        /// <summary>
+        /// Adds a message into the message store, and returns the id of the saved message.
+        /// Intended for use with the Outbox pattern: http://gistlabs.com/2014/05/the-outbox/ normally you include the
+        /// call to DepositPostBox within the scope of the transaction to write corresponding entity state to your
+        /// database, that you want to signal via the request to downstream consumers
+        /// Pass deposited Guid to <see cref="ClearOutboxAsync"/> 
+        /// </summary>
+        /// <param name="request">The request to save to the message store</param>
+        /// <typeparam name="T">The type of the request</typeparam>
+        /// <returns></returns>
+        public async Task<Guid> DepositPostAsync<T>(T request, bool continueOnCapturedContext = false, CancellationToken cancellationToken = default(CancellationToken)) where T : class, IRequest
+        {
+            _logger.Value.InfoFormat("Save request: {0} {1}", request.GetType(), request.Id);
+
+            if (_asyncOutbox == null)
                 throw new InvalidOperationException("No async message store defined.");
-            if (_asyncMessageProducer == null)
-                throw new InvalidOperationException("No async message producer defined.");
 
             var messageMapper = _mapperRegistry.Get<T>();
             if (messageMapper == null)
@@ -502,10 +588,147 @@ namespace Paramore.Brighter
 
             await RetryAndBreakCircuitAsync(async ct =>
             {
-                await _asyncMessageStore.AddAsync(message, _messageStoreTimeout, ct).ConfigureAwait(continueOnCapturedContext);
-                await _asyncMessageProducer.SendAsync(message).ConfigureAwait(continueOnCapturedContext);
+                await _asyncOutbox.AddAsync(message, _messageStoreTimeout, ct).ConfigureAwait(continueOnCapturedContext);
             }, continueOnCapturedContext, cancellationToken).ConfigureAwait(continueOnCapturedContext);
+
+            return message.Id;
         }
+
+
+        /// <summary>
+        /// Flushes the message box message given by <param name="posts"> to the broker.
+        /// Intended for use with the Outbox pattern: http://gistlabs.com/2014/05/the-outbox/ <see cref="DepositPostBox"/>
+        /// </summary>
+        /// <param name="posts">The posts to flush</param>
+        public void ClearOutbox(params Guid[] posts)
+        {
+            if (_outBox == null)
+                throw new InvalidOperationException("No message store defined.");
+            if (_messageProducer == null)
+                throw new InvalidOperationException("No message producer defined.");
+
+
+            foreach (var messageId in posts)
+            {
+                var message = _outBox.Get(messageId);
+                if (message == null)
+                    throw new NullReferenceException($"Message with Id {messageId} not found in the Message Store");
+                
+                _logger.Value.InfoFormat("Decoupled invocation of message: Topic:{0} Id:{1}", message.Header.Topic, messageId.ToString());
+
+                RetryAndBreakCircuit(() => { _messageProducer.Send(message); });
+            }
+
+        }
+
+        /// <summary>
+        /// Flushes the message box message given by <param name="posts"> to the broker.
+        /// Intended for use with the Outbox pattern: http://gistlabs.com/2014/05/the-outbox/ <see cref="DepositPostBoxAsync"/>
+        /// </summary>
+        /// <param name="posts">The posts to flush</param>
+         public async Task ClearOutboxAsync(IEnumerable<Guid> posts, bool continueOnCapturedContext = false, CancellationToken cancellationToken = default(CancellationToken))
+        {
+
+            if (_asyncOutbox == null)
+                throw new InvalidOperationException("No async message store defined.");
+            if (_asyncMessageProducer == null)
+                throw new InvalidOperationException("No async message producer defined.");
+
+            foreach (var messageId in posts)
+            {
+                var message = await _asyncOutbox.GetAsync(messageId, _messageStoreTimeout, cancellationToken);
+                if (message == null)
+                    throw new NullReferenceException($"Message with Id {messageId} not found in the Message Store");
+                
+                 _logger.Value.InfoFormat("Decoupled invocation of message: Topic:{0} Id:{1}", message.Header.Topic, messageId.ToString());
+             
+                await RetryAndBreakCircuitAsync(
+                    async ct => await _asyncMessageProducer.SendAsync(message).ConfigureAwait(continueOnCapturedContext), 
+                    continueOnCapturedContext, cancellationToken).ConfigureAwait(continueOnCapturedContext);
+            }
+
+
+        }
+        
+
+        /// <summary>
+        /// Uses the Request-Reply messaging approach to send a message to another server and block awaiting a reply.
+        /// The message is placed into a message queue but not into the message store.
+        /// An ephemeral reply queue is created, and its name used to set the reply address for the response. We produce
+        /// a queue per exchange, to simplify correlating send and receive.
+        /// The response is directed to a registered handler.
+        /// Because the operation blocks, there is a mandatory timeout
+        /// </summary>
+        /// <param name="request">What message do we want a reply to</param>
+        /// <param name="timeOutInMilliseconds">The call blocks, so we must time out</param>
+        /// <exception cref="NotImplementedException"></exception>
+        public TResponse Call<T, TResponse>(T request, int timeOutInMilliseconds)
+            where T : class, ICall where TResponse : class, IResponse
+        {
+            if (timeOutInMilliseconds <= 0)
+            {
+                throw new InvalidOperationException("Timeout to a call method must have a duration greater than zero");
+            }
+
+            var outMessageMapper = _mapperRegistry.Get<T>();
+            if (outMessageMapper == null)
+                throw new ArgumentOutOfRangeException(
+                    $"No message mapper registered for messages of type: {typeof(T)}");
+            
+            var inMessageMapper = _mapperRegistry.Get<TResponse>();
+            if (inMessageMapper == null)
+                throw new ArgumentOutOfRangeException(
+                    $"No message mapper registered for messages of type: {typeof(T)}");
+
+            //create a reply queue via creating a consumer - we use random identifiers as we will destroy
+            var channelName = Guid.NewGuid();
+            var routingKey = channelName.ToString();
+            using (var responseChannel =
+                _responseChannelFactory.CreateChannel(
+                    new Connection(
+                        typeof(TResponse),
+                        channelName: new ChannelName(channelName.ToString()), 
+                        routingKey: new RoutingKey(routingKey))))
+            {
+
+                _logger.Value.InfoFormat("Create reply queue for topic {0}", routingKey);
+                request.ReplyAddress.Topic = routingKey;
+                request.ReplyAddress.CorrelationId = channelName; 
+                
+                //we do this to create the channel on the broker, or we won't have anything to send to; we 
+                //retry in case the connection is poor. An alternative would be to extract the code from
+                //the channel to create the connection, but this does not do much on a new queue
+                Retry(() => responseChannel.Purge());
+
+                var outMessage = outMessageMapper.MapToMessage(request);
+
+                //We don't store the message, if we continue to fail further retry is left to the sender 
+                 _logger.Value.DebugFormat("Sending request  with routingkey {0}", routingKey);
+                Retry(() => _messageProducer.Send(outMessage));
+
+                Message responseMessage = null;
+                
+                //now we block on the receiver to try and get the message, until timeout.
+                 _logger.Value.DebugFormat("Awaiting response on {0}", routingKey);
+                 Retry(() => responseMessage = responseChannel.Receive(timeOutInMilliseconds));
+
+                TResponse response = default(TResponse);
+                if (responseMessage.Header.MessageType != MessageType.MT_NONE)
+                {
+                     _logger.Value.DebugFormat("Reply received from {0}", routingKey);
+                     //map to request is map to a response, but it is a request from consumer point of view. Confusing, but...
+                    response = inMessageMapper.MapToRequest(responseMessage);
+                    Send(response);
+                }
+
+                 _logger.Value.InfoFormat("Deleting queue for routingkey: {0}", routingKey);
+                
+                return response;
+                
+            } //clean up everything at this point, whatever happens
+
+        }
+        
 
         /// <summary>
         /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
@@ -545,17 +768,29 @@ namespace Paramore.Brighter
 
         private void CheckCircuit(Action send)
         {
-            _policyRegistry.Get(CIRCUITBREAKER).Execute(send);
+            _policyRegistry.Get<Policy>(CIRCUITBREAKER).Execute(send);
         }
 
         private async Task CheckCircuitAsync(Func<CancellationToken, Task> send, bool continueOnCapturedContext = false, CancellationToken cancellationToken = default(CancellationToken))
         {
-            await _policyRegistry.Get(CIRCUITBREAKERASYNC)
+            await _policyRegistry.Get<AsyncPolicy>(CIRCUITBREAKERASYNC)
                 .ExecuteAsync(send, cancellationToken, continueOnCapturedContext)
                 .ConfigureAwait(continueOnCapturedContext);
         }
 
-        private void RetryAndBreakCircuit(Action send)
+        private void Retry(Action send)
+        {
+            _policyRegistry.Get<Policy>(RETRYPOLICY).Execute(send);
+        }
+
+        private async Task RetryAsync(Func<CancellationToken, Task> send, bool continueOnCapturedContext = false, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            await _policyRegistry.Get<AsyncPolicy>(RETRYPOLICYASYNC)
+                .ExecuteAsync(send, cancellationToken, continueOnCapturedContext)
+                .ConfigureAwait(continueOnCapturedContext);
+        }
+
+         private void RetryAndBreakCircuit(Action send)
         {
             CheckCircuit(() => Retry(send));
         }
@@ -566,16 +801,5 @@ namespace Paramore.Brighter
                 .ConfigureAwait(continueOnCapturedContext);
         }
 
-        private void Retry(Action send)
-        {
-            _policyRegistry.Get(RETRYPOLICY).Execute(send);
-        }
-
-        private async Task RetryAsync(Func<CancellationToken, Task> send, bool continueOnCapturedContext = false, CancellationToken cancellationToken = default(CancellationToken))
-        {
-            await _policyRegistry.Get(RETRYPOLICYASYNC)
-                .ExecuteAsync(send, cancellationToken, continueOnCapturedContext)
-                .ConfigureAwait(continueOnCapturedContext);
-        }
-    }
+  }
 }

@@ -1,4 +1,4 @@
-// ***********************************************************************
+﻿// ***********************************************************************
 // Assembly         : paramore.brighter.messaginggateway.awssqs
 // Author           : ian
 // Created          : 08-17-2015
@@ -12,6 +12,7 @@
 // <summary></summary>
 // ***********************************************************************
 
+using Amazon;
 using Amazon.Runtime;
 
 namespace Paramore.Brighter.MessagingGateway.AWSSQS
@@ -21,28 +22,24 @@ namespace Paramore.Brighter.MessagingGateway.AWSSQS
     /// </summary>
     public class SqsMessageConsumerFactory : IAmAMessageConsumerFactory
     {
-        private readonly AWSCredentials _credentials;
+        private readonly AWSMessagingGatewayConnection _awsConnection;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SqsMessageConsumerFactory"/> class.
         /// </summary>
-        public SqsMessageConsumerFactory(AWSCredentials credentials) 
+        public SqsMessageConsumerFactory(AWSMessagingGatewayConnection awsConnection)
         {
-            _credentials = credentials;
+            _awsConnection = awsConnection;
         }
 
         /// <summary>
-        /// Creates the specified queue name.
+        /// Creates a consumer for the specified queue.
         /// </summary>
-        /// <param name="channelName">Name of the channel.</param>
-        /// <param name="routingKey">The routing key.</param>
-        /// <param name="isDurable">if set to <c>true</c> [is durable].</param>
-        /// <param name="preFetchSize">Number of items to read from the queue at once</param>
-        /// <param name="highAvailability">Our are queues high-availablility</param>
+        /// <param name="connection">The queue to connect to</param>
         /// <returns>IAmAMessageConsumer.</returns>
-        public IAmAMessageConsumer Create(string channelName, string routingKey, bool isDurable, ushort preFetchSize = 1, bool highAvailability = false)
+        public IAmAMessageConsumer Create(Connection connection)
         {
-            return new SqsMessageConsumer(_credentials, channelName);
+            return new SqsMessageConsumer(_awsConnection, connection.ChannelName.ToValidSQSQueueName());
         }
     }
 }

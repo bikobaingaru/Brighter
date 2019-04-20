@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -23,6 +23,7 @@ THE SOFTWARE. */
 #endregion
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Xunit;
@@ -45,7 +46,7 @@ namespace Paramore.Brighter.Tests.MessageDispatch
             _channel = new FakeChannel();
             _commandProcessor = new SpyCommandProcessor();
 
-            var messageMapperRegistry = new MessageMapperRegistry(new SimpleMessageMapperFactory(() => new MyEventMessageMapper()));
+            var messageMapperRegistry = new MessageMapperRegistry(new SimpleMessageMapperFactory((_) => new MyEventMessageMapper()));
             messageMapperRegistry.Register<MyEvent, MyEventMessageMapper>();
 
             var connection = new Connection<MyEvent>(new ConnectionName("test"), noOfPerformers: 3, timeoutInMilliseconds: 1000, channelFactory: new InMemoryChannelFactory(_channel), channelName: new ChannelName("fakeChannel"), routingKey: new RoutingKey("fakekey"));
@@ -54,7 +55,7 @@ namespace Paramore.Brighter.Tests.MessageDispatch
             var @event = new MyEvent();
             var message = new MyEventMessageMapper().MapToMessage(@event);
             for (var i = 0; i < 6; i++)
-                _channel.Add(message);
+                _channel.Enqueue(message);
 
             _dispatcher.State.Should().Be(DispatcherState.DS_AWAITING);
             _dispatcher.Receive();
@@ -64,9 +65,12 @@ namespace Paramore.Brighter.Tests.MessageDispatch
         [Fact]
         public void WhenAMessageDispatcherStartsMultiplePerformers()
         {
+            //should_have_multiple_consumers
+            _dispatcher.Consumers.Count().Should().Be(3);
+
             Task.Delay(1000).Wait();
             _dispatcher.End().Wait();
-
+            
             //_should_have_consumed_the_messages_in_the_channel
             _channel.Length.Should().Be(0);
             //_should_have_a_stopped_state

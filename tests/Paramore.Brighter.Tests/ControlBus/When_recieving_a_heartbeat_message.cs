@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2015 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -52,15 +52,15 @@ namespace Paramore.Brighter.Tests.ControlBus
             var firstConsumer = A.Fake<IAmAConsumer>();
             var secondConsumer = A.Fake<IAmAConsumer>();
 
-            A.CallTo(() => firstConsumer.Name).Returns(new ConnectionName(TEST_FIRST_CONNECTION_NAME));
+            A.CallTo(() => firstConsumer.Name).Returns(new ConsumerName(TEST_FIRST_CONNECTION_NAME));
             A.CallTo(() => firstConsumer.State).Returns(ConsumerState.Open);
 
-            A.CallTo(() => secondConsumer.Name).Returns(new ConnectionName(TEST_SECOND_CONNECTION_NAME));
+            A.CallTo(() => secondConsumer.Name).Returns(new ConsumerName(TEST_SECOND_CONNECTION_NAME));
             A.CallTo(() => secondConsumer.State).Returns(ConsumerState.Shut);
 
             A.CallTo(() => dispatcher.Consumers).Returns(new List<IAmAConsumer> {firstConsumer, secondConsumer});
 
-            var hostName = new HostName($"{Environment.MachineName}.{Assembly.GetEntryAssembly().FullName}");
+            var hostName = new HostName($"{Environment.MachineName}.{Assembly.GetEntryAssembly()?.FullName}");
             A.CallTo(() => dispatcher.HostName).Returns(hostName);
             _hostName = hostName;
 
@@ -80,9 +80,9 @@ namespace Paramore.Brighter.Tests.ControlBus
             heartbeatEvent.HostName.Should().Be(_hostName);
             heartbeatEvent.SendersAddress.Topic.Should().Be(TEST_ROUTING_KEY);
             heartbeatEvent.SendersAddress.CorrelationId.Should().Be(_correlationId);
-            heartbeatEvent.Consumers[0].ConnectionName.ToString().Should().Be(TEST_FIRST_CONNECTION_NAME);
+            heartbeatEvent.Consumers[0].ConsumerName.ToString().Should().Be(TEST_FIRST_CONNECTION_NAME);
             heartbeatEvent.Consumers[0].State.Should().Be(ConsumerState.Open);
-            heartbeatEvent.Consumers[1].ConnectionName.ToString().Should().Be(TEST_SECOND_CONNECTION_NAME);
+            heartbeatEvent.Consumers[1].ConsumerName.ToString().Should().Be(TEST_SECOND_CONNECTION_NAME);
             heartbeatEvent.Consumers[1].State.Should().Be(ConsumerState.Shut);
         }
    }

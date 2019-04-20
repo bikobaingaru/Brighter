@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Paramore.Brighter.Actions;
@@ -108,7 +108,7 @@ namespace Paramore.Brighter.ServiceActivator
                     break;
                 }
 
-                //ayn ca
+                //async callback
                 if (message.Header.MessageType == MessageType.MT_CALLBACK)
                 {
                     message.Execute();
@@ -136,15 +136,15 @@ namespace Paramore.Brighter.ServiceActivator
                 }
                 catch (AggregateException aggregateException)
                 {
-                    var stopAndRequeue = HandleProcessingException(aggregateException);
+                    var (stop, requeue) = HandleProcessingException(aggregateException);
 
-                    if (stopAndRequeue.Item2)   //requeue
+                    if (requeue)   
                     {
                         RequeueMessage(message);
                         continue;
                     }
 
-                    if (stopAndRequeue.Item1)   //stop
+                    if (stop)   
                     {
                         RejectMessage(message);
                         Channel.Dispose();
@@ -153,13 +153,13 @@ namespace Paramore.Brighter.ServiceActivator
                 }
                 catch (MessageMappingException messageMappingException)
                 {
-                    _logger.Value.WarnException("MessagePump: Failed to map the message from {1} on thread # {0}", messageMappingException, Thread.CurrentThread.ManagedThreadId, Channel.Name);
+                    _logger.Value.WarnException("MessagePump: Failed to map message '{2}' from {1} on thread # {0}", messageMappingException, Thread.CurrentThread.ManagedThreadId, Channel.Name, message.Id);
 
                     IncrementUnacceptableMessageLimit();
                 }
                 catch (Exception e)
                 {
-                    _logger.Value.ErrorException("MessagePump: Failed to dispatch message from {1} on thread # {0}", e, Thread.CurrentThread.ManagedThreadId, Channel.Name);
+                    _logger.Value.ErrorException("MessagePump: Failed to dispatch message '{2}' from {1} on thread # {0}", e, Thread.CurrentThread.ManagedThreadId, Channel.Name, message.Id);
                 }
 
                 AcknowledgeMessage(message);
@@ -183,7 +183,7 @@ namespace Paramore.Brighter.ServiceActivator
 
         protected abstract Task DispatchRequest(MessageHeader messageHeader, TRequest request);
 
-        protected Tuple<bool, bool> HandleProcessingException(AggregateException aggregateException)
+        protected (bool, bool) HandleProcessingException(AggregateException aggregateException)
         {
             var stop = false;
             var requeue = false;
@@ -206,7 +206,7 @@ namespace Paramore.Brighter.ServiceActivator
                 _logger.Value.ErrorException("MessagePump: Failed to dispatch message from {1} on thread # {0}", exception, Thread.CurrentThread.ManagedThreadId, Channel.Name);
             }
 
-            return new Tuple<bool, bool>(stop, requeue);
+            return (stop, requeue);
         }
 
         protected void IncrementUnacceptableMessageLimit()
@@ -237,7 +237,7 @@ namespace Paramore.Brighter.ServiceActivator
                         Thread.CurrentThread.ManagedThreadId, 
                         RequeueCount, 
                         Channel.Name,
-                        string.IsNullOrEmpty(originalMessageId) ? string.Empty : string.Format(" (original message id {0})", originalMessageId),
+                        string.IsNullOrEmpty(originalMessageId) ? string.Empty : $" (original message id {originalMessageId})",
                         Environment.NewLine,
                         message.Body.Value);
 
@@ -257,7 +257,7 @@ namespace Paramore.Brighter.ServiceActivator
         {
             if (_messageMapper == null)
             {
-                throw new ConfigurationException(string.Format("No message mapper found for type {0} for message {1}.", typeof(TRequest).FullName, message.Id));
+                throw new ConfigurationException($"No message mapper found for type {typeof(TRequest).FullName} for message {message.Id}.");
             }
 
             _logger.Value.DebugFormat("MessagePump: Translate message {0} on thread # {1}", message.Id, Thread.CurrentThread.ManagedThreadId);
@@ -270,7 +270,7 @@ namespace Paramore.Brighter.ServiceActivator
             }
             catch (Exception exception)
             {
-                throw new MessageMappingException(string.Format("Failed to map message {0} using message mapper {1} for type {2} ", message.Id, _messageMapper.GetType().FullName, typeof(TRequest).FullName), exception);
+                throw new MessageMappingException($"Failed to map message {message.Id} using message mapper {_messageMapper.GetType().FullName} for type {typeof(TRequest).FullName} ", exception);
             }
 
             return request;

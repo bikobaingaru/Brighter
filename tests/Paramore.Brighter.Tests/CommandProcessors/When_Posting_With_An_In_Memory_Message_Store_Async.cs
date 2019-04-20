@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2015 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -28,6 +28,7 @@ using FluentAssertions;
 using Newtonsoft.Json;
 using Paramore.Brighter.Tests.CommandProcessors.TestDoubles;
 using Polly;
+using Polly.Registry;
 using Xunit;
 
 namespace Paramore.Brighter.Tests.CommandProcessors
@@ -37,14 +38,14 @@ namespace Paramore.Brighter.Tests.CommandProcessors
         private readonly CommandProcessor _commandProcessor;
         private readonly MyCommand _myCommand = new MyCommand();
         private readonly Message _message;
-        private readonly InMemoryMessageStore _messageStore;
+        private readonly InMemoryOutbox _outbox;
         private readonly FakeMessageProducer _fakeMessageProducer;
 
         public CommandProcessorWithInMemoryMessageStoreAscyncTests()
         {
             _myCommand.Value = "Hello World";
 
-            _messageStore = new InMemoryMessageStore();
+            _outbox = new InMemoryOutbox();
             _fakeMessageProducer = new FakeMessageProducer();
 
             _message = new Message(
@@ -52,7 +53,7 @@ namespace Paramore.Brighter.Tests.CommandProcessors
                 new MessageBody(JsonConvert.SerializeObject(_myCommand))
                 );
 
-            var messageMapperRegistry = new MessageMapperRegistry(new SimpleMessageMapperFactory(() => new MyCommandMessageMapper()));
+            var messageMapperRegistry = new MessageMapperRegistry(new SimpleMessageMapperFactory((_) => new MyCommandMessageMapper()));
             messageMapperRegistry.Register<MyCommand, MyCommandMessageMapper>();
 
             var retryPolicy = Policy
@@ -67,7 +68,7 @@ namespace Paramore.Brighter.Tests.CommandProcessors
                 new InMemoryRequestContextFactory(),
                 new PolicyRegistry { { CommandProcessor.RETRYPOLICYASYNC, retryPolicy }, { CommandProcessor.CIRCUITBREAKERASYNC, circuitBreakerPolicy } },
                 messageMapperRegistry,
-                (IAmAMessageStoreAsync<Message>)_messageStore,
+                (IAmAnOutboxAsync<Message>)_outbox,
                 (IAmAMessageProducerAsync)_fakeMessageProducer);
         }
 
@@ -76,7 +77,7 @@ namespace Paramore.Brighter.Tests.CommandProcessors
         {
             await _commandProcessor.PostAsync(_myCommand);
 
-            var message = await _messageStore.GetAsync(_myCommand.Id);
+            var message = await _outbox.GetAsync(_myCommand.Id);
             //_should_store_the_message_in_the_sent_command_message_repository
             message.Should().NotBeNull();
             //_should_send_a_message_via_the_messaging_gateway

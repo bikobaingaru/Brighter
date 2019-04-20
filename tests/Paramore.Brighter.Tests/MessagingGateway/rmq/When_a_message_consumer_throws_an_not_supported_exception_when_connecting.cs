@@ -25,12 +25,12 @@ THE SOFTWARE. */
 using System;
 using FluentAssertions;
 using Paramore.Brighter.MessagingGateway.RMQ;
-using Paramore.Brighter.MessagingGateway.RMQ.MessagingGatewayConfiguration;
 using Paramore.Brighter.Tests.MessagingGateway.TestDoubles;
 using Xunit;
 
 namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
 {
+    [Collection("RMQ")]
     [Trait("Category", "RMQ")]
     public class RmqMessageConsumerChannelFailureTests
     {
@@ -42,7 +42,7 @@ namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
 
         public RmqMessageConsumerChannelFailureTests()
         {
-            var messageHeader = new MessageHeader(Guid.NewGuid(), "test2", MessageType.MT_COMMAND);
+            var messageHeader = new MessageHeader(Guid.NewGuid(), Guid.NewGuid().ToString(), MessageType.MT_COMMAND);
 
             messageHeader.UpdateHandledCount();
             _sentMessage = new Message(messageHeader, new MessageBody("test content"));
@@ -54,10 +54,9 @@ namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
             };
 
             _sender = new RmqMessageProducer(rmqConnection);
-            _receiver = new RmqMessageConsumer(rmqConnection, _sentMessage.Header.Topic, _sentMessage.Header.Topic, false, 1, false);
+            _receiver = new RmqMessageConsumer(rmqConnection, _sentMessage.Header.Topic, _sentMessage.Header.Topic, false, false);
             _badReceiver = new NotSupportedRmqMessageConsumer(rmqConnection, _sentMessage.Header.Topic, _sentMessage.Header.Topic, false, 1, false);
 
-            _receiver.Purge();
             _sender.Send(_sentMessage);
         }
 
@@ -72,9 +71,9 @@ namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
             _firstException.InnerException.Should().BeOfType<NotSupportedException>();
         }
 
+        [Fact]
         public void Dispose()
         {
-            _receiver.Purge();
             _sender.Dispose();
             _receiver.Dispose();
         }

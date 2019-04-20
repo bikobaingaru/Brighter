@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -22,6 +22,10 @@ THE SOFTWARE. */
 
 #endregion
 
+using Paramore.Brighter.FeatureSwitch;
+using Polly.Fallback;
+using Polly.Registry;
+
 namespace Paramore.Brighter
 {
     /// <summary>
@@ -37,8 +41,8 @@ namespace Paramore.Brighter
     ///     </item>
     ///     <item>
     ///         <description>
-    ///             A <see cref="IAmAPolicyRegistry"/> containing a list of policies that you want to be accessible to the <see cref="CommandProcessor"/>. You can use
-    ///             <see cref="PolicyRegistry"/> to provide the <see cref="IAmAPolicyRegistry"/>. Policies are expected to be Polly <see cref="!:https://github.com/michael-wolfenden/Polly"/> 
+    ///             A <see cref="IPolicyRegistry{TKey}"/> containing a list of policies that you want to be accessible to the <see cref="CommandProcessor"/>. You can use
+    ///             <see cref="PolicyRegistry"/> to provide the <see cref="IPolicyRegistry{TKey}"/>. Policies are expected to be Polly <see cref="!:https://github.com/michael-wolfenden/Polly"/> 
     ///             <see cref="Paramore.Brighter.Policies"/> references.
     ///             If you do not need any policies around quality of service (QoS) concerns - you do not have Work Queues and/or do not intend to use Polly Policies for 
     ///             QoS concerns - you can use <see cref="DefaultPolicy"/> to indicate you do not need them or just want a simple retry.
@@ -46,7 +50,7 @@ namespace Paramore.Brighter
     ///      </item>
     ///     <item>
     ///         <description>
-    ///             A <see cref="MessagingConfiguration"/> describing how you want to configure Task Queues for the <see cref="CommandProcessor"/>. We store messages in a <see cref="IAmAMessageStore"/>
+    ///             A <see cref="MessagingConfiguration"/> describing how you want to configure Task Queues for the <see cref="CommandProcessor"/>. We store messages in a <see cref="IAmAnOutbox{T}"/>
     ///             for later replay (in case we need to compensate by trying a message again). We send messages to a Task Queue via a <see cref="IAmAMessageProducer"/> and we  want to know how
     ///             to map the <see cref="IRequest"/> (<see cref="Command"/> or <see cref="Event"/>) to a <see cref="Message"/> using a <see cref="IAmAMessageMapper"/> using 
     ///             an <see cref="IAmAMessageMapperRegistry"/>. You can use the default <see cref="MessageMapperRegistry"/> to register the association. You need to 
@@ -66,8 +70,8 @@ namespace Paramore.Brighter
     /// </summary>
     public class CommandProcessorBuilder : INeedAHandlers, INeedPolicy, INeedMessaging, INeedARequestContext, IAmACommandProcessorBuilder
     {
-        private IAmAMessageStore<Message> _messageStore;
-        private IAmAMessageStoreAsync<Message> _asyncMessageStore;
+        private IAmAnOutbox<Message> _messageStore;
+        private IAmAnOutboxAsync<Message> _asyncOutbox;
         private IAmAMessageProducer _messagingGateway;
         private IAmAMessageProducerAsync _asyncMessagingGateway;
         private IAmAMessageMapperRegistry _messageMapperRegistry;
@@ -75,10 +79,13 @@ namespace Paramore.Brighter
         private IAmASubscriberRegistry _registry;
         private IAmAHandlerFactory _handlerFactory;
         private IAmAHandlerFactoryAsync _asyncHandlerFactory;
-        private IAmAPolicyRegistry _policyRegistry;
+        private IPolicyRegistry<string> _policyRegistry;
+        private IAmAFeatureSwitchRegistry _featureSwitchRegistry;
+        private IAmAChannelFactory _responseChannelFactory;
         private int _messageStoreWriteTimeout;
         private int _messagingGatewaySendTimeout;
         private bool _useTaskQueues = false;
+        private bool _useRequestReplyQueues = false;
 
         private CommandProcessorBuilder()
         {
@@ -115,12 +122,12 @@ namespace Paramore.Brighter
         /// <returns>INeedLogging.</returns>
         /// <exception cref="ConfigurationException">The policy registry is missing the CommandProcessor.RETRYPOLICY policy which is required</exception>
         /// <exception cref="ConfigurationException">The policy registry is missing the CommandProcessor.CIRCUITBREAKER policy which is required</exception>
-        public INeedMessaging Policies(IAmAPolicyRegistry thePolicyRegistry)
+        public INeedMessaging Policies(IPolicyRegistry<string> thePolicyRegistry)
         {
-            if (!thePolicyRegistry.Has(CommandProcessor.RETRYPOLICY))
+            if (!thePolicyRegistry.ContainsKey(CommandProcessor.RETRYPOLICY))
                 throw new ConfigurationException("The policy registry is missing the CommandProcessor.RETRYPOLICY policy which is required");
                 
-            if (!thePolicyRegistry.Has(CommandProcessor.CIRCUITBREAKER))
+            if (!thePolicyRegistry.ContainsKey(CommandProcessor.CIRCUITBREAKER))
                 throw new ConfigurationException("The policy registry is missing the CommandProcessor.CIRCUITBREAKER policy which is required");
             
             _policyRegistry = thePolicyRegistry;
@@ -148,10 +155,10 @@ namespace Paramore.Brighter
         public INeedARequestContext TaskQueues(MessagingConfiguration configuration)
         {
             _useTaskQueues = true;
-            _messageStore = configuration.MessageStore;
-            _asyncMessageStore = configuration.AsyncMessageStore;
+            _messageStore = configuration.OutBox;
+            _asyncOutbox = configuration.OutboxAsync;
             _messagingGateway = configuration.MessageProducer;
-            _asyncMessagingGateway = configuration.AsyncMessageProducer;
+            _asyncMessagingGateway = configuration.MessageProducerAsync;
             _messageMapperRegistry = configuration.MessageMapperRegistry;
             _messageStoreWriteTimeout = configuration.MessageStoreWriteTimeout;
             _messagingGatewaySendTimeout = configuration.MessagingGatewaySendTimeout;
@@ -164,7 +171,37 @@ namespace Paramore.Brighter
         /// <returns>INeedARequestContext.</returns>
         public INeedARequestContext NoTaskQueues()
         {
-            _useTaskQueues = false;
+            return this;
+        }
+
+        /// <summary>
+        /// The <see cref="CommandProcessor"/> wants to support <see cref="CommandProcessor.Call{T}(T)"/> using RPC between client and server 
+        /// </summary>
+        /// <param name="messagingConfiguration"></param>
+        /// <returns></returns>
+        public INeedARequestContext RequestReplyQueues(MessagingConfiguration configuration)
+        {
+            _useRequestReplyQueues = true;
+            _messageStore = configuration.OutBox;
+            _asyncOutbox = configuration.OutboxAsync;
+            _messagingGateway = configuration.MessageProducer;
+            _asyncMessagingGateway = configuration.MessageProducerAsync;
+            _messageMapperRegistry = configuration.MessageMapperRegistry;
+            _messageStoreWriteTimeout = configuration.MessageStoreWriteTimeout;
+            _messagingGatewaySendTimeout = configuration.MessagingGatewaySendTimeout;
+            _responseChannelFactory = configuration.ResponseChannelFactory;
+             
+            return this;
+        }
+        
+        /// <summary>
+        /// Supplies the specified feature switching configuration, so we can use feature switches on user-defined request handlers
+        /// </summary>
+        /// <param name="featureSwitchRegistry">The feature switch config provider</param>
+        /// <returns>INeedARequestContext</returns>
+        public INeedARequestContext ConfigureFeatureSwitches(IAmAFeatureSwitchRegistry featureSwitchRegistry)
+        {
+            _featureSwitchRegistry = featureSwitchRegistry;
             return this;
         }
 
@@ -186,7 +223,7 @@ namespace Paramore.Brighter
         /// <returns>CommandProcessor.</returns>
         public CommandProcessor Build()
         {
-            if (!_useTaskQueues)
+            if (!(_useTaskQueues || _useRequestReplyQueues))
             {
                 return new CommandProcessor(
                     
@@ -194,9 +231,10 @@ namespace Paramore.Brighter
                     handlerFactory: _handlerFactory,
                     asyncHandlerFactory: _asyncHandlerFactory,
                     requestContextFactory: _requestContextFactory,
-                    policyRegistry: _policyRegistry);
+                    policyRegistry: _policyRegistry,
+                    featureSwitchRegistry: _featureSwitchRegistry);
             }
-            else
+            else if (_useTaskQueues)
             {
                 return new CommandProcessor(
                     subscriberRegistry: _registry,
@@ -205,12 +243,29 @@ namespace Paramore.Brighter
                     requestContextFactory: _requestContextFactory,
                     policyRegistry: _policyRegistry,
                     mapperRegistry: _messageMapperRegistry,
-                    messageStore: _messageStore,
-                    asyncMessageStore: _asyncMessageStore,
+                    outBox: _messageStore,
+                    asyncOutbox: _asyncOutbox,
                     messageProducer: _messagingGateway,
                     asyncMessageProducer: _asyncMessagingGateway,
-                    messageStoreTimeout: _messageStoreWriteTimeout
+                    messageStoreTimeout: _messageStoreWriteTimeout,
+                    featureSwitchRegistry: _featureSwitchRegistry
                     );
+            }
+            else if (_useRequestReplyQueues)
+            {
+                 return new CommandProcessor(
+                    subscriberRegistry: _registry,
+                    handlerFactory: _handlerFactory,
+                    requestContextFactory: _requestContextFactory,
+                    policyRegistry: _policyRegistry,
+                    mapperRegistry: _messageMapperRegistry,
+                    messageProducer: _messagingGateway,
+                    responseChannelFactory: _responseChannelFactory 
+                    );
+            }
+            else
+            {
+                throw new ConfigurationException("Unknown Command Processor Type");
             }
         }
     }
@@ -222,7 +277,7 @@ namespace Paramore.Brighter
     public interface INeedAHandlers
     {
         /// <summary>
-        /// Handlerses the specified the registry.
+        /// Handlers the specified the registry.
         /// </summary>
         /// <param name="theRegistry">The registry.</param>
         /// <returns>INeedPolicy.</returns>
@@ -230,44 +285,50 @@ namespace Paramore.Brighter
     }
 
     /// <summary>
-    /// Interface INeedPolicy{CC2D43FA-BBC4-448A-9D0B-7B57ADF2655C}
+    /// Interface INeedPolicy
     /// </summary>
     public interface INeedPolicy
     {
         /// <summary>
-        /// Policieses the specified policy registry.
+        /// Policies the specified policy registry.
         /// </summary>
         /// <param name="policyRegistry">The policy registry.</param>
         /// <returns>INeedLogging.</returns>
-        INeedMessaging Policies(IAmAPolicyRegistry policyRegistry);
+        INeedMessaging Policies(IPolicyRegistry<string> policyRegistry);
         /// <summary>
-        /// Noes the policy.
+        /// Knows the policy.
         /// </summary>
-        /// <returns>INeedLogging.</returns>
+        /// <returns>INeedMessaging.</returns>
         INeedMessaging DefaultPolicy();
     }
 
   
     /// <summary>
-    /// Interface INeedMessaging{CC2D43FA-BBC4-448A-9D0B-7B57ADF2655C}
+    /// Interface INeedMessaging
+    /// Note that a single command builder does not support both task queues and rpc, using the builder
     /// </summary>
     public interface INeedMessaging
     {
         /// <summary>
-        /// Tasks the queues.
+        /// Configure a task queue to send messags out of process
         /// </summary>
         /// <param name="configuration">The configuration.</param>
         /// <returns>INeedARequestContext.</returns>
         INeedARequestContext TaskQueues(MessagingConfiguration configuration);
         /// <summary>
-        /// Noes the task queues.
+        /// We don't send messages out of process
         /// </summary>
         /// <returns>INeedARequestContext.</returns>
         INeedARequestContext NoTaskQueues();
+        /// <summary>
+        ///  We want to use RPC to send messages to another processs
+        /// </summary>
+        /// <param name="messagingConfiguration"></param>
+        INeedARequestContext RequestReplyQueues(MessagingConfiguration messagingConfiguration);
     }
 
     /// <summary>
-    /// Interface INeedARequestContext{CC2D43FA-BBC4-448A-9D0B-7B57ADF2655C}
+    /// Interface INeedARequestContext
     /// </summary>
     public interface INeedARequestContext
     {
@@ -277,9 +338,17 @@ namespace Paramore.Brighter
         /// <param name="requestContextFactory">The request context factory.</param>
         /// <returns>IAmACommandProcessorBuilder.</returns>
         IAmACommandProcessorBuilder RequestContextFactory(IAmARequestContextFactory requestContextFactory);
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="featureSwitchRegistry"></param>
+        /// <returns></returns>
+        INeedARequestContext ConfigureFeatureSwitches(IAmAFeatureSwitchRegistry featureSwitchRegistry);
     }
+    
     /// <summary>
-    /// Interface IAmACommandProcessorBuilder{CC2D43FA-BBC4-448A-9D0B-7B57ADF2655C}
+    /// Interface IAmACommandProcessorBuilder
     /// </summary>
     public interface IAmACommandProcessorBuilder
     {

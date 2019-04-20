@@ -1,8 +1,3 @@
-** When you cannot get a connection from a pool?
-The PooledRedisClientManager imposes a maximum connection limit and when its maximum pool size has been reached will instead block 
-on any new connection requests until the next RedisClient is released back into the pool. If no client became available within PoolTimeout, 
-a Pool TimeoutException will be thrown.
-
 ** Allow setting of the connection retry interval and maximum retry window
 
 To improve the resilience of client connections, RedisClient will transparently retry failed Redis operations due to 
@@ -12,13 +7,29 @@ These defaults can be tweaked with:
     RedisConfig.DefaultRetryTimeout = 10000;
     RedisConfig.BackOffMultiplier = 10;
     
+** Multi ***
+A risk is that 'killing the process' could result in a next message id without a message, an id + message but not on a queue;
+The way to fix this is to use multi i.e. id+message+all queues. Should we switch over to multi and check failure scenarios
+for partial writes 
 
-** Delay
-To support delay we want to implement a priority queue within Redis
-This may actually help us with the issue of creating a generic priority queue i.e. send to Redis and then later forward 
-via another producer if required. Should be a design goal, allows use of Redis as a 'hangfire' alternative
-
+**Acknowledge
+We can do anything as we have already removed item from queue for competing consumers.We don't get to 'lock' a message
+Would it help if we recorded unacked messages somehow i.e. messages that are locked, with a timeout?
+So another queue has locked messages, we check if message is locked, if it is we move on
+Lock has TTL so will fade if not used?
+Might require batching or transaction to acquire and write lock?
+Problem is Blocking Pop. We don't have a blocking next item pop
 
 ** Request/Response
 We should support this, how? Look at RedisMQ
+
+** Concerns
+Running out of integers for message ids - we could roll over? We use long, should we use unsigned long? Is it ok just to roll over? 
+Gives us an upper limit of unsigned long per queue before we start to overwrite messages. 
+Running out of storage space for messages.
+ Is there anyway to know we are running out of capacity on Redis?
+ Do we want an upper limit? How would we know what that is?
+ We use TTL to delete messages; we need to cope with pulling a message that has expired. Channel Failure Exception, hint at expiry?
+   
+   
     

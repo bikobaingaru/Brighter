@@ -1,11 +1,13 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Extensions;
 using Xunit;
 using Paramore.Brighter.Policies.Handlers;
 using Paramore.Brighter.Tests.CommandProcessors.TestDoubles;
 using Paramore.Brighter.Tests.ExceptionPolicy.TestDoubles;
 using Polly;
+using Polly.Registry;
 using TinyIoC;
 
 namespace Paramore.Brighter.Tests.ExceptionPolicy

@@ -1,18 +1,20 @@
+﻿using Amazon;
 using Amazon.Runtime;
 
 namespace Paramore.Brighter.MessagingGateway.AWSSQS
 {
     public class SqsMessageProducerFactory : IAmAMessageProducerFactory
     {
-        private readonly AWSCredentials _credentials;
-        public SqsMessageProducerFactory(AWSCredentials credentials)
+        private readonly AWSMessagingGatewayConnection _connection;
+
+        public SqsMessageProducerFactory(AWSMessagingGatewayConnection connection)
         {
-            _credentials = credentials;
+            _connection = connection;
         }
 
         public IAmAMessageProducer Create()
         {
-            return new SqsMessageProducer(_credentials);
+            return new SqsMessageProducer(_connection);
         }
     }
 }

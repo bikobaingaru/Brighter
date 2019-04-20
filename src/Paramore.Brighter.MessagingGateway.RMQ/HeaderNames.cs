@@ -24,17 +24,14 @@ THE SOFTWARE. */
 
 namespace Paramore.Brighter.MessagingGateway.RMQ
 {
-    /// <summary>
-    /// Class HeaderNames.{CC2D43FA-BBC4-448A-9D0B-7B57ADF2655C}
-    /// </summary>
     public class HeaderNames
     {
         /// <summary>
-        /// The messag e_ type{CC2D43FA-BBC4-448A-9D0B-7B57ADF2655C}
+        /// The message type
         /// </summary>
         public const string MESSAGE_TYPE = "MessageType";
         /// <summary>
-        /// The messag e_ identifier{CC2D43FA-BBC4-448A-9D0B-7B57ADF2655C}
+        /// The message identifier
         /// </summary>
         public const string MESSAGE_ID = "MessageId";
         /// <summary>
@@ -42,11 +39,11 @@ namespace Paramore.Brighter.MessagingGateway.RMQ
         /// </summary>
         public const string CORRELATION_ID = "CorrelationId";
         /// <summary>
-        /// The topic{CC2D43FA-BBC4-448A-9D0B-7B57ADF2655C}
+        /// The topic
         /// </summary>
         public const string TOPIC = "Topic";
         /// <summary>
-        /// The handle d_ count{CC2D43FA-BBC4-448A-9D0B-7B57ADF2655C}
+        /// The handled count
         /// </summary>
         public const string HANDLED_COUNT = "HandledCount";
         /// <summary>

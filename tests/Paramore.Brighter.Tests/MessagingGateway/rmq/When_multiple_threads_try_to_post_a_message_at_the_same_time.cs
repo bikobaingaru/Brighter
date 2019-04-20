@@ -27,11 +27,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Paramore.Brighter.MessagingGateway.RMQ;
-using Paramore.Brighter.MessagingGateway.RMQ.MessagingGatewayConfiguration;
 using Xunit;
 
 namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
 {
+    [Collection("RMQ")]
     [Trait("Category", "RMQ")]
     public class RmqMessageProducerSupportsMultipleThreadsTests : IDisposable
     {
@@ -40,7 +40,9 @@ namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
 
         public RmqMessageProducerSupportsMultipleThreadsTests()
         {
-            _message = new Message(new MessageHeader(Guid.NewGuid(), "nonexistenttopic", MessageType.MT_COMMAND), new MessageBody("test content"));
+            _message = new Message(
+                new MessageHeader(Guid.NewGuid(), "nonexistenttopic", MessageType.MT_COMMAND), 
+                new MessageBody("test content"));
 
             var rmqConnection = new RmqMessagingGatewayConnection
             {

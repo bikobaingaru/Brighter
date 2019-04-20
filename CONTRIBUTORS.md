@@ -19,13 +19,17 @@ Brighter contributors (sorted alphabeticaly)
  * Documentation fixes
  
 **[Ian Cooper](https://github.com/iancooper)**
-
   * Wrote first version of Command Processor, Policy, RavenDb Message Store, RMQ gateway, RestMS Core, RestMS Server, RestMS Gateway and ServiceActivator, Control Bus
   * Various fixes
   * Project Technical Lead
   * Committer
+  * Redis Messaging Gateway
+  
 **[Derek Comartin](https://github.com/dcomartin)**
  * MySQL message store and command store
+ 
+**[Jamie Clayton](https://github.com/mit-jamie-clayton)**
+* Documentation fixes
   
 **[Bob Gregory](https://github.com/BobFromHuddle)**
   * Various fixes
@@ -39,10 +43,15 @@ Brighter contributors (sorted alphabeticaly)
   * Significant work on RabbitMQ Gateway and Service Activator reliability
   * Build and Packaging
   * Committer
+  * Servicer of pull requests
    
 **[Fred Hoogduin](https://github.com/Red-F)**
   * Various fixes
-  * *Async methods on Command Processor
+  * Async methods on Command Processor
+  * SQL Server Messaging Gateway
+ 
+**[Wayne Hunsley](https://github.com/whunsley)**
+  * Kafka Messaging Gateway 
   
 **[Franck Kambiwa](https://github.com/thynquest)**
   * Various fixes
@@ -59,7 +68,7 @@ Brighter contributors (sorted alphabeticaly)
 **[Eddie Li](https://github.com/xiaodili)**
   * Various fixes   
   
-**[James Morcom](https://github.com/mrmorcs)
+**[James Morcom](https://github.com/mrmorcs)**
   * Documentation fixes
   
 **[Henk Mollema](https://github.com/henkmollema)**
@@ -67,6 +76,13 @@ Brighter contributors (sorted alphabeticaly)
 
 **[Scott McLewin](https://github.com/smclewin)**
   * Binary serialization support for messages 
+  
+**[Domenico Musto](https://github.com/domspektrix?)**
+  * Fix issue with multiple performers having name clashes
+  
+**[Jonny Olliff-Lee](https://github.com/DevJonny)**
+  * Documentation Fixes
+  * Various Code Fixes
    
 **[Solveig Oskarsdottir](https://github.com/solveigo)**
  * QA of Brighter
@@ -77,7 +93,10 @@ Brighter contributors (sorted alphabeticaly)
 **[Ian Pender](https://github.com/penderi)**
   * Work on Tasks examples
   * Documentation for Tasks examples
-  
+
+**[Fred Hoogduin](https://github.com/Red-F)**
+  * MsSql MessagingGateway
+
 **[Petr Houška](https://github.com/petrroll)**
   * Documentation fixes 
  
@@ -88,6 +107,9 @@ Brighter contributors (sorted alphabeticaly)
 **[Francesco Pighi](https://github.com/fpighi)**
   * SQL Message Store
   * Various fixes
+
+**[Tarun Pothulapati](https://github.com/Pothulapati)**
+  * PostgreSQL MessageStore
 
 **[tmschlot](https://github.com/tmschlot)**
   * Various fixes
@@ -102,12 +124,19 @@ Brighter contributors (sorted alphabeticaly)
 
 **[Richard Tappenden](https://github.com/tapmantwo)**
   * Various fixes
+  * Command Sourcing Once-Only improvements
+  * Command Store improvements
 
 **[Yiannis Triantafyllopoulos](https://github.com/yiannistri)**  
   * Various Fixes
   
-**[whunsley](https://github.com/whunsley)**
+**[Wayne Hunsley](https://github.com/whunsley)**
+  * Kafka transport
   * Various Fixes
 
 **[Joseph Woodward](https://github.com/JosephWoodward)**  
   * Documentation fixes 
+  
+**[Wilson](https://github.com/drewsuccess)
+  * Various fixes
+  

@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -30,9 +30,9 @@ using Greetings.Ports.Mappers;
 using Greetings.TinyIoc;
 using Paramore.Brighter;
 using Paramore.Brighter.MessagingGateway.RMQ;
-using Paramore.Brighter.MessagingGateway.RMQ.MessagingGatewayConfiguration;
 using Paramore.Brighter.ServiceActivator;
 using Polly;
+using Polly.Registry;
 using Serilog;
 
 namespace GreetingsReceiverConsole
@@ -42,70 +42,86 @@ namespace GreetingsReceiverConsole
         public static void Main(string[] args)
         {
             Log.Logger = new LoggerConfiguration()
-                .WriteTo.LiterateConsole()
-                .CreateLogger();
+              .MinimumLevel.Debug()
+              .WriteTo.Console()
+              .CreateLogger();
 
             var container = new TinyIoCContainer();
 
             var handlerFactory = new TinyIocHandlerFactory(container);
             var messageMapperFactory = new TinyIoCMessageMapperFactory(container);
             container.Register<IHandleRequests<GreetingEvent>, GreetingEventHandler>();
+            container.Register<IHandleRequests<FarewellEvent>, FarewellEventHandler>();
 
-            var subscriberRegistry = new SubscriberRegistry();
-            subscriberRegistry.Register<GreetingEvent, GreetingEventHandler>();
+
+            var subscriberRegistry = new SubscriberRegistry()
+        {
+            {typeof(GreetingEvent), typeof(GreetingEventHandler)},
+            {typeof(FarewellEvent), typeof(FarewellEventHandler)}
+        };
 
             //create policies
             var retryPolicy = Policy
-                .Handle<Exception>()
-                .WaitAndRetry(new[]
-                {
-                    TimeSpan.FromMilliseconds(50),
-                    TimeSpan.FromMilliseconds(100),
-                    TimeSpan.FromMilliseconds(150)
-                });
+              .Handle<Exception>()
+              .WaitAndRetry(new[]
+              {
+            TimeSpan.FromMilliseconds(50),
+            TimeSpan.FromMilliseconds(100),
+            TimeSpan.FromMilliseconds(150)
+              });
 
             var circuitBreakerPolicy = Policy
-                .Handle<Exception>()
-                .CircuitBreaker(1, TimeSpan.FromMilliseconds(500));
+              .Handle<Exception>()
+              .CircuitBreaker(1, TimeSpan.FromMilliseconds(500));
 
             var policyRegistry = new PolicyRegistry
-            {
-                { CommandProcessor.RETRYPOLICY, retryPolicy },
-                { CommandProcessor.CIRCUITBREAKER, circuitBreakerPolicy }
-            };
+        {
+          {CommandProcessor.RETRYPOLICY, retryPolicy},
+          {CommandProcessor.CIRCUITBREAKER, circuitBreakerPolicy}
+        };
 
             //create message mappers
             var messageMapperRegistry = new MessageMapperRegistry(messageMapperFactory)
-            {
-                { typeof(GreetingEvent), typeof(GreetingEventMessageMapper) }
-            };
+        {
+          {typeof(GreetingEvent), typeof(GreetingEventMessageMapper)},
+          {typeof(FarewellEvent), typeof(FarewellEventMessageMapper) }
+        };
 
             //create the gateway
-            var rmqConnnection = new RmqMessagingGatewayConnection 
+            var rmqConnnection = new RmqMessagingGatewayConnection
             {
-                AmpqUri  = new AmqpUriSpecification(new Uri("amqp://guest:guest@localhost:5672/%2f")),
+                AmpqUri = new AmqpUriSpecification(new Uri("amqp://guest:guest@localhost:5672")),
                 Exchange = new Exchange("paramore.brighter.exchange"),
             };
 
             var rmqMessageConsumerFactory = new RmqMessageConsumerFactory(rmqConnnection);
 
             var dispatcher = DispatchBuilder.With()
-                .CommandProcessor(CommandProcessorBuilder.With()
-                    .Handlers(new HandlerConfiguration(subscriberRegistry, handlerFactory))
-                    .Policies(policyRegistry)
-                    .NoTaskQueues()
-                    .RequestContextFactory(new InMemoryRequestContextFactory())
-                    .Build())
-                .MessageMappers(messageMapperRegistry)
-                .DefaultChannelFactory(new InputChannelFactory(rmqMessageConsumerFactory))
-                .Connections(new Connection[]
-                {
-                    new Connection<GreetingEvent>(
-                        new ConnectionName("paramore.example.greeting"),
-                        new ChannelName("greeting.event"),
-                        new RoutingKey("greeting.event"),
-                        timeoutInMilliseconds: 200)
-                }).Build();
+              .CommandProcessor(CommandProcessorBuilder.With()
+                .Handlers(new HandlerConfiguration(subscriberRegistry, handlerFactory))
+                .Policies(policyRegistry)
+                .NoTaskQueues()
+                .RequestContextFactory(new InMemoryRequestContextFactory())
+                .Build())
+              .MessageMappers(messageMapperRegistry)
+              .DefaultChannelFactory(new ChannelFactory(rmqMessageConsumerFactory))
+              .Connections(new Connection[]
+              {
+            new Connection<GreetingEvent>(
+              new ConnectionName("paramore.example.greeting"),
+              new ChannelName("greeting.event"),
+              new RoutingKey("greeting.event"),
+              timeoutInMilliseconds: 200,
+              isDurable: true,
+              highAvailability: true),
+            new Connection<FarewellEvent>(
+                new ConnectionName("paramore.example.farewell"),
+                new ChannelName("farewell.event"),
+                new RoutingKey("farewell.event"),
+                timeoutInMilliseconds: 200,
+                isDurable: true,
+                highAvailability: true)
+              }).Build();
 
             dispatcher.Receive();
 

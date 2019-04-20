@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using FluentAssertions;
 using Newtonsoft.Json;
 using Paramore.Brighter.Tests.CommandProcessors.TestDoubles;
 using Polly;
 using Polly.CircuitBreaker;
+using Polly.Registry;
 using Xunit;
 
 namespace Paramore.Brighter.Tests.CommandProcessors
@@ -13,7 +14,7 @@ namespace Paramore.Brighter.Tests.CommandProcessors
         private readonly CommandProcessor _commandProcessor;
         private readonly MyCommand _myCommand = new MyCommand();
         private Message _message;
-        private readonly FakeMessageStore _messageStore;
+        private readonly FakeOutbox _outbox;
         private readonly FakeErroringMessageProducer _messagingProducer;
         private Exception _failedException;
         private BrokenCircuitException _circuitBrokenException;
@@ -21,14 +22,14 @@ namespace Paramore.Brighter.Tests.CommandProcessors
         public CircuitBreakerTests()
         {
             _myCommand.Value = "Hello World";
-            _messageStore = new FakeMessageStore();
+            _outbox = new FakeOutbox();
 
             _messagingProducer = new FakeErroringMessageProducer();
             _message = new Message(
                 new MessageHeader(_myCommand.Id, "MyCommand", MessageType.MT_COMMAND),
                 new MessageBody(JsonConvert.SerializeObject(_myCommand))
                 );
-            var messageMapperRegistry = new MessageMapperRegistry(new SimpleMessageMapperFactory(() => new MyCommandMessageMapper()));
+            var messageMapperRegistry = new MessageMapperRegistry(new SimpleMessageMapperFactory((_) => new MyCommandMessageMapper()));
             messageMapperRegistry.Register<MyCommand, MyCommandMessageMapper>();
 
             var retryPolicy = Policy
@@ -48,7 +49,7 @@ namespace Paramore.Brighter.Tests.CommandProcessors
                 new InMemoryRequestContextFactory(),
                 new PolicyRegistry { { CommandProcessor.RETRYPOLICY, retryPolicy }, { CommandProcessor.CIRCUITBREAKER, circuitBreakerPolicy } },
                 messageMapperRegistry,
-                _messageStore,
+                _outbox,
                 _messagingProducer);
         }
 

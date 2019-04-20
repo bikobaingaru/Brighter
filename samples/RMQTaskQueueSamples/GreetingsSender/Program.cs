@@ -29,7 +29,6 @@ using Greetings.Ports.Mappers;
 using Greetings.TinyIoc;
 using Paramore.Brighter;
 using Paramore.Brighter.MessagingGateway.RMQ;
-using Paramore.Brighter.MessagingGateway.RMQ.MessagingGatewayConfiguration;
 
 namespace GreetingsSender
 {
@@ -44,13 +43,14 @@ namespace GreetingsSender
 
             var messageMapperRegistry = new MessageMapperRegistry(messageMapperFactory)
             {
-                {typeof(GreetingEvent), typeof(GreetingEventMessageMapper)}
+                {typeof(GreetingEvent), typeof(GreetingEventMessageMapper)},
+                {typeof(FarewellEvent), typeof(FarewellEventMessageMapper) }
             };
 
-            var messageStore = new InMemoryMessageStore();
+            var messageStore = new InMemoryOutbox();
             var rmqConnnection = new RmqMessagingGatewayConnection
             {
-                AmpqUri = new AmqpUriSpecification(new Uri("amqp://guest:guest@localhost:5672/%2f")),
+                AmpqUri = new AmqpUriSpecification(new Uri("amqp://guest:guest@localhost:5672")),
                 Exchange = new Exchange("paramore.brighter.exchange"),
             };
             var producer = new RmqMessageProducer(rmqConnnection);
@@ -63,7 +63,8 @@ namespace GreetingsSender
 
             var commandProcessor = builder.Build();
 
-            commandProcessor.Post(new GreetingEvent("Ian"));
+            commandProcessor.Post(new GreetingEvent("Ian says: Hi there!"));
+            commandProcessor.Post(new FarewellEvent("Ian says: See you later!"));
         }
     }
 }

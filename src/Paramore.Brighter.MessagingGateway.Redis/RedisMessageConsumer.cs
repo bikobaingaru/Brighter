@@ -1,12 +1,38 @@
-﻿using System;
-using System.Net.Http;
+﻿#region Licence
+/* The MIT License (MIT)
+Copyright © 2017 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE. */
+
+#endregion
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using ServiceStack.Redis;
 using Paramore.Brighter.MessagingGateway.Redis.LibLog;
 
 namespace Paramore.Brighter.MessagingGateway.Redis
 {
-    public class RedisMessageConsumer : IAmAMessageConsumer
+    public class RedisMessageConsumer : RedisMessageGateway, IAmAMessageConsumer
     {
         
         /* see RedisMessageProducer to understand how we are using a dynamic recipient list model with Redis */
@@ -15,9 +41,8 @@ namespace Paramore.Brighter.MessagingGateway.Redis
         private const string QUEUES = "queues";
         
         private readonly string _queueName;
-        private readonly string _topic;
         
-        private static Lazy<RedisManagerPool> _pool;
+        private readonly Dictionary<Guid, string> _inflight = new Dictionary<Guid, string>();
  
         /// <summary>
         /// Creates a consumer that reads from a List in Redis via a BLPOP (so will block).
@@ -29,14 +54,11 @@ namespace Paramore.Brighter.MessagingGateway.Redis
             RedisMessagingGatewayConfiguration redisMessagingGatewayConfiguration, 
             string queueName, 
             string topic)
+            :base(redisMessagingGatewayConfiguration)
         {
             _queueName = queueName;
-            _topic = topic;
-            _pool = new Lazy<RedisManagerPool>(() => new RedisManagerPool(
-                redisMessagingGatewayConfiguration.RedisConnectionString, 
-                new RedisPoolConfig() {MaxPoolSize = redisMessagingGatewayConfiguration.MaxPoolSize}
-            ));
-        }
+            Topic = topic;
+       }
 
         /// <summary>
         /// This a 'do nothing operation' as with Redis we pop the message from the queue to read;
@@ -51,6 +73,7 @@ namespace Paramore.Brighter.MessagingGateway.Redis
         public void Acknowledge(Message message)
         {
             _logger.Value.InfoFormat("RmqMessageConsumer: Acknowledging message {0}", message.Id.ToString());
+            _inflight.Remove(message.Id);
         }
 
         /// <summary>
@@ -59,7 +82,7 @@ namespace Paramore.Brighter.MessagingGateway.Redis
         /// </summary>
         public void Dispose()
         {
-            Dispose(true);
+            DisposePool();
             GC.SuppressFinalize(this);
         }
 
@@ -68,7 +91,7 @@ namespace Paramore.Brighter.MessagingGateway.Redis
         /// </summary>
         public void Purge()
         {
-            using (var client = _pool.Value.GetClient())
+            using (var client = Pool.Value.GetClient())
             {
                 _logger.Value.DebugFormat("RmqMessageConsumer: Purging channel {0}", _queueName);
                 //This kills the queue, not the messages, which we assume expire
@@ -81,31 +104,49 @@ namespace Paramore.Brighter.MessagingGateway.Redis
         /// </summary>
         /// <param name="timeoutInMilliseconds">The period to await a message</param>
         /// <returns>The message read from the list</returns>
-        public Message Receive(int timeoutInMilliseconds)
+        public Message[] Receive(int timeoutInMilliseconds)
         {
-            _logger.Value.DebugFormat("RedisMessageConsumer: Preparing to retrieve next message from queue {0} with routing key {1} via exchange {2} on connection {3}", _queueName, _topic);
+            _logger.Value.DebugFormat("RedisMessageConsumer: Preparing to retrieve next message from queue {0} with routing key {1} via exchange {2} on connection {3}", _queueName, Topic);
+
+            if (_inflight.Any())
+            {
+                 _logger.Value.ErrorFormat("RedisMessageConsumer: Preparing to retrieve next message from queue {0}, but have unacked or not rejected message ", _queueName);
+                throw new ChannelFailureException(string.Format("Unacked message still in flight with id: {0}", _inflight.Keys.First().ToString()));   
+            }
+            
             var message = new Message();
             IRedisClient client = null;
             try
             {
                 client = GetClient();
                 EnsureConnection(client);
-                var redisMessage = ReadMessage(client, timeoutInMilliseconds);
-                message = new BrighterMessageFactory().Create(redisMessage);
+                (string msgId, string rawMsg) redisMessage = ReadMessage(client, timeoutInMilliseconds);
+                message = new RedisMessageCreator().CreateMessage(redisMessage.rawMsg);
+                
+                if (message.Header.MessageType != MessageType.MT_NONE && message.Header.MessageType != MessageType.MT_UNACCEPTABLE)
+                {
+                    _inflight.Add(message.Id, redisMessage.msgId);
+                }
             }
             catch (TimeoutException te)
             {
-                _logger.Value.ErrorFormat("Could not connect to redis client within {0} milliseconds", timeoutInMilliseconds.ToString());
+                _logger.Value.ErrorFormat("Could not connect to Redis client within {0} milliseconds", timeoutInMilliseconds.ToString());
                 throw new ChannelFailureException(
-                    string.Format("Could not connect to redis client within {0} milliseconds", timeoutInMilliseconds.ToString()), 
+                    string.Format("Could not connect to Redis client within {0} milliseconds", timeoutInMilliseconds.ToString()),
                     te
-                    );
+                );
+            }
+            catch (RedisException re)
+            {
+                _logger.Value.ErrorFormat($"Could not connect to Redis: {re.Message}");
+                throw new ChannelFailureException(string.Format("Could not connect to Redis client - see inner exception for details" ), re);
+                 
             }
             finally
             {
                 client?.Dispose();
             }
-            return message;
+            return new Message[] {message};
         }
 
 
@@ -116,6 +157,7 @@ namespace Paramore.Brighter.MessagingGateway.Redis
         /// <param name="requeue"></param>
         public void Reject(Message message, bool requeue)
         {
+            _inflight.Remove(message.Id);
         }
 
         /// <summary>
@@ -124,51 +166,74 @@ namespace Paramore.Brighter.MessagingGateway.Redis
         /// <param name="message"></param>
         public void Requeue(Message message)
         {
+            message.Header.HandledCount++;
+            using (var client = Pool.Value.GetClient())
+            {
+                if (_inflight.ContainsKey(message.Id))
+                {
+                    var msgId = _inflight[message.Id];
+                    client.AddItemToList(_queueName, msgId);
+                    var redisMsg = CreateRedisMessage(message);
+                    StoreMessage(client, redisMsg, long.Parse(msgId));
+                    _inflight.Remove(message.Id);
+                }
+                else
+                {
+                    throw new ChannelFailureException(string.Format("Expected to find message id {0} in-flight but was not", message.Id.ToString()));
+                }
+            }
         }
 
+        /// <summary>
+        /// Requeues the specified message.
+        /// </summary>
+        /// <param name="message"></param>
+        /// <param name="delayMilliseconds">Number of milliseconds to delay delivery of the message.</param>
+        public void Requeue(Message message, int delayMilliseconds)
+        {
+            Task.Delay(delayMilliseconds).Wait();
+            message.Header.DelayedMilliseconds = delayMilliseconds;
+            Requeue(message);
+        }
+        
         /*Virtual to allow testing to simulate client failure*/
         protected virtual IRedisClient GetClient()
         {
-            return _pool.Value.GetClient();
-        }
-        
-        private void Dispose(bool disposing)
-        {
-            if (_pool.IsValueCreated)
-                _pool.Value.Dispose();
+            return Pool.Value.GetClient();
         }
 
 
-         private void EnsureConnection(IRedisClient client)
+        private void EnsureConnection(IRedisClient client)
         {
             _logger.Value.DebugFormat("RedisMessagingGateway: Creating queue {0}", _queueName);
             //what is the queue list key
-            var key = _topic + "." + QUEUES;
+            var key = Topic + "." + QUEUES;
             //subscribe us 
             client.AddItemToSet(key, _queueName);
 
         }
 
-        private string ReadMessage(IRedisClient client, int timeoutInMilliseconds)
+        private (string msgId, string rawMsg) ReadMessage(IRedisClient client, int timeoutInMilliseconds)
         {
             var msg = string.Empty;
-            var latestId = client.BlockingDequeueItemFromList(_queueName, TimeSpan.FromMilliseconds(timeoutInMilliseconds));
+            var latestId = client.BlockingRemoveStartFromList(_queueName, TimeSpan.FromMilliseconds(timeoutInMilliseconds));
             if (latestId != null)
             {
-                var key = _topic + "." + latestId;
+                var key = Topic + "." + latestId;
                 msg = client.GetValue(key);
                 _logger.Value.InfoFormat(
                     "Redis: Received message from queue {0} with routing key {0}, message: {1}",
-                    _queueName, _topic, JsonConvert.SerializeObject(msg), Environment.NewLine);
-         }
+                    _queueName, Topic, JsonConvert.SerializeObject(msg), Environment.NewLine);
+            }
             else
             {
                _logger.Value.DebugFormat(
                    "RmqMessageConsumer: Time out without receiving message from queue {0} with routing key {1}",
-                    _queueName, _topic);
+                    _queueName, Topic);
   
             }
-            return msg;
+            return (latestId, msg);
         }
+        
     }
 }

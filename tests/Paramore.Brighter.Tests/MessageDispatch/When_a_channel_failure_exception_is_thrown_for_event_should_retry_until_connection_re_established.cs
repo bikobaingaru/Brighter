@@ -23,6 +23,7 @@ THE SOFTWARE. */
 #endregion
 
 using System;
+using System.Linq;
 using FluentAssertions;
 using Newtonsoft.Json;
 using Xunit;
@@ -50,10 +51,10 @@ namespace Paramore.Brighter.Tests.MessageDispatch
 
             var message1 = new Message(new MessageHeader(Guid.NewGuid(), "MyTopic", MessageType.MT_EVENT), new MessageBody(JsonConvert.SerializeObject(_event)));
             var message2 = new Message(new MessageHeader(Guid.NewGuid(), "MyTopic", MessageType.MT_EVENT), new MessageBody(JsonConvert.SerializeObject(_event)));
-            _channel.Add(message1);
-            _channel.Add(message2);
+            _channel.Enqueue(message1);
+            _channel.Enqueue(message2);
             var quitMessage = new Message(new MessageHeader(Guid.Empty, "", MessageType.MT_QUIT), new MessageBody(""));
-            _channel.Add(quitMessage);
+            _channel.Enqueue(quitMessage);
         }
 
         [Fact]
@@ -62,7 +63,9 @@ namespace Paramore.Brighter.Tests.MessageDispatch
             _messagePump.Run();
 
             //_should_publish_the_message_via_the_command_processor
+            _commandProcessor.Commands.Count().Should().Equals(2);
             _commandProcessor.Commands[0].Should().Be(CommandType.Publish);
+            _commandProcessor.Commands[1].Should().Be(CommandType.Publish);
         }
 
     }

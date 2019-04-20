@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -24,6 +24,7 @@ THE SOFTWARE. */
 
 using System;
 using FluentAssertions;
+using FluentAssertions.Extensions;
 using Newtonsoft.Json;
 using Xunit;
 using Paramore.Brighter.Monitoring.Configuration;
@@ -31,6 +32,7 @@ using Paramore.Brighter.Monitoring.Events;
 using Paramore.Brighter.Monitoring.Handlers;
 using Paramore.Brighter.Tests.CommandProcessors.TestDoubles;
 using Paramore.Brighter.Tests.Monitoring.TestDoubles;
+using Polly.Registry;
 using TinyIoC;
 
 namespace Paramore.Brighter.Tests.Monitoring

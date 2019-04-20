@@ -6,13 +6,64 @@ When we push a collection of functionality it is available via [nuget.org](http:
 This section lists features in master, available by [AppVeyor](https://ci.appveyor.com/project/BrighterCommand/paramore-brighter), but not yet deployed to [nuget.org](http://www.nuget.org).
 
 ## Master ##
+ - Renamed MessageStore to Outbox and CommandStore to Inbox for clarity with well-known pattern names outside this team
+ --- Impact is wide, namespaces, class names and project names, so this is a ***BREAKING CHANGE***
+ --- Mostly you can search and replace to fix
+ --- Added support for a global inbox via a UseInbox configuration parameter to the Command Processor
+ ------ Will insert an Inbox in all pipelines
+ ------ Can be overriden by a NoGlobalInbox attribute for don't add to pipeline, or an alternative UseInbox attribute to vary config
+ --- The goal here is to be clearer than our own internal names, which don't help folks who were not part of this team
+ - Added caching of attributes on target handlers in the pipeline build step
+ --- This means we don't do reflection every time we build the pipeline for a request
+ --- We do still always call the handler factory to instantiate as we don't own handler lifetime, implementer does
+ --- We added a method to clear the pipeline cache, particularly for testing where you want to test configuration scenarios
+  
 
-  - Added Support for a Redis transport
+## Release 8.0.* ##
+  - Added SourceLink debugging and are shipping .pdb files in the nuget package.
+  - Strong Name in line with Open Source guidance https://docs.microsoft.com/en-us/dotnet/standard/library-guidance/strong-naming. Where libraries we rely on are not strong named we don't strong name our code.
+  - Removed `IAmAPolicyRegistry` and replaced it with `IPolicyRegistry<string>` from Polly, it is a drop in replacement but in a the Polly namespace.
+  - Removed our `PolicyRegistry` and now use the `PolicyRegistry` from Polly, it is a drop in replacement but in a the Polly namespace.
+  - Support for Feature Switches on handlers
+  - Switch Command Sourcing Handler to using an Exists method when checking for duplicate messages
+  - Rewritten AWS SQS + SNS transport
+  - Support for DynamoDB Message and Command Stores (Jonny Olliff-Lee @DevJonny)
+  - Added a Call() method to CommandProcessor to support Request-Reply
+  - Add a context field to the command store, to allow identification of a context, and share a table across multiple handlers. Note that this is a breaking schema change for users of the command store
+  - Command Sourcing handler now writes to store only once the handler has successfully completed
+  - Renamed InputChannelFactory to ChannelFactory as we don't have an OutputChannelFactory any more (and not for some time)
+  - Channel buffer now only source for message pump, populated via consumer when empty
+  - Consumers now return an array of messages, default size of 1 but can be up to 10
+  - Switch RMQ Consumers back to basic consume to support batch delivery
+  - RMQ now supports batch sizes of up to 10 for consuming messages
+  - SNS+SQS now supports batch sizes of up to 10 for consuming messages
+  - Added support for the Outbox pattern via DepositPost and ClearPostBox
+  - Fixed https://github.com/BrighterCommand/Brighter/issues/156 to allow different exchange types to be set (was broken by support of delayed exchange)
+  
+   
+## Release 7.4.0 ##
+  - Updated to signed version of Polly, works with netcore2.1.
+  - Fix for Sql CommandStore.
+  - Fixes to make flaky tests stable.
+  
+## Release 7.3.0 ##  
+  - Added beta Support for a Redis transport
+  - Support for Binding a channel to multiple topics 
+  - RMQ Transport: Fixed handling of socket timeout where node we are connected to (not master) partitions from cluster and is paused under the pause minority strategy. Now resets connection successfully.
+  - RMQ Transport: Fixed issue with OperationInterrupted exception when master node partitions and we are connected to it
+  - Overall improved reliability of Brighter RMQ transport when connecting to a cluster that experiences a partition
+  - Fixed an issue where multiple performers did not have distinct names and so could not be tracked
+  - RMQ changed from push rabbit consumer to just simple pull based.
+
+## Release 7.2.0 ##
+  - Support for PostgreSql Message Store (Tarun Pothulapati @Pothulapati)
+  - Support for MySql Message and Command Stores (Derek Comartin @dcomartin)
+  - Support for Kafka Messaging Gateway - Beta (Wayne Hunsley @whunsley)
+  - Support for MSSql Messaging Gateway - Beta (Fred Hoogduin @Red-F)
 
 ## Release 7.1.0 ##
   - Fixes issue with high CPU when failing to connect to RabbitMQ.
   - Fixes missing High Availability setting, had to make changes to IAmAChannelFactory.
-
 
 ## Release 7.0.137 - 7.0.143 ##
   - Support for .NET Core (NETSTANDARD 1.5)

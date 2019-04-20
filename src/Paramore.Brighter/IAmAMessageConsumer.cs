@@ -31,39 +31,34 @@ namespace Paramore.Brighter
     /// </summary>
     public interface IAmAMessageConsumer : IDisposable
     {
-        /// <summary>
-        /// Receives the specified queue name.
-        /// An abstraction over a third-party messaging library. Used to read messages from the broker and to acknowledge the processing of those messages or requeue them.
-        /// Used by a <see cref="Channel"/> to provide access to a third-party message queue.
-        /// </summary>
-        /// <param name="timeoutInMilliseconds">The timeout in milliseconds.</param>
-        /// <returns>Message.</returns>
-        Message Receive(int timeoutInMilliseconds);
-        /// <summary>
+       /// <summary>
         /// Acknowledges the specified message.
         /// </summary>
         /// <param name="message">The message.</param>
         void Acknowledge(Message message);
+
         /// <summary>
         /// Rejects the specified message.
         /// </summary>
         /// <param name="message">The message.</param>
         /// <param name="requeue">if set to <c>true</c> [requeue].</param>
         void Reject(Message message, bool requeue);
+
         /// <summary>
         /// Purges the specified queue name.
         /// </summary>
         void Purge();
-        /// <summary>
-        /// Requeues the specified message.
-        /// </summary>
-        /// <param name="message"></param>
-        void Requeue(Message message);
-    }
 
-    public interface IAmAMessageConsumerSupportingDelay : IAmAMessageConsumer, IAmAMessageGatewaySupportingDelay
-    {
-        /// <summary>
+         /// <summary>
+        /// Receives the specified queue name.
+        /// An abstraction over a third-party messaging library. Used to read messages from the broker and to acknowledge the processing of those messages or requeue them.
+        /// Used by a <see cref="Channel"/> to provide access to a third-party message queue.
+        /// </summary>
+        /// <param name="timeoutInMilliseconds">The timeout in milliseconds.</param>
+        /// <returns>Message.</returns>
+        Message[] Receive(int timeoutInMilliseconds);
+
+       /// <summary>
         /// Requeues the specified message.
         /// </summary>
         /// <param name="message"></param>
@@ -71,3 +66,4 @@ namespace Paramore.Brighter
         void Requeue(Message message, int delayMilliseconds);
     }
 }
+

@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -22,16 +22,16 @@ THE SOFTWARE. */
 
 #endregion
 
+using System;
 using Xunit;
-using Paramore.Brighter.Policies.Handlers;
 using Paramore.Brighter.Tests.CommandProcessors.TestDoubles;
 using Paramore.Brighter.Tests.Timeout.Test_Doubles;
+using Polly.Registry;
 using TinyIoC;
 
 namespace Paramore.Brighter.Tests.Timeout
 {
-    [Collection("Timeout Policy Check Async")]
-     public class MyPassesTimeoutHandlerTests
+     public class MyPassesTimeoutHandlerTests : IDisposable
     {
         private readonly CommandProcessor _commandProcessor;
         private readonly MyCommand _myCommand = new MyCommand();
@@ -44,8 +44,7 @@ namespace Paramore.Brighter.Tests.Timeout
 
             var container = new TinyIoCContainer();
             var handlerFactory = new TinyIocHandlerFactory(container);
-            container.Register<IHandleRequests<MyCommand>, MyPassesTimeoutHandler>().AsSingleton();
-            container.Register<IHandleRequests<MyCommand>, TimeoutPolicyHandler<MyCommand>>().AsSingleton();
+            container.Register<IHandleRequests<MyCommand>, MyPassesTimeoutHandler>();
 
             _commandProcessor = new CommandProcessor(registry, handlerFactory, new InMemoryRequestContextFactory(), new PolicyRegistry());
         }
@@ -57,7 +56,12 @@ namespace Paramore.Brighter.Tests.Timeout
             _commandProcessor.Send(_myCommand);
 
             //_should_complete_the_command_before_an_exception
-            MyPassesTimeoutHandler.Shouldreceive(_myCommand);
+            Assert.True(_myCommand.TaskCompleted);
+        }
+
+        public void Dispose()
+        {
+            _commandProcessor?.Dispose();
         }
     }
 }

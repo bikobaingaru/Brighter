@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -23,70 +23,53 @@ THE SOFTWARE. */
 #endregion
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Paramore.Brighter.MessagingGateway.RMQ;
-using Paramore.Brighter.MessagingGateway.RMQ.MessagingGatewayConfiguration;
 using RabbitMQ.Client;
 
 namespace Paramore.Brighter.Tests.MessagingGateway.RMQ
 {
-    internal class TestRMQListener
+
+    internal class QueueFactory
     {
+        private readonly RmqMessagingGatewayConnection _connection;
         private readonly string _channelName;
-        private readonly ConnectionFactory _connectionFactory;
-        private readonly IConnection _connection;
-        private readonly IModel _channel;
+        private readonly string[] _routingKeys;
 
-        public TestRMQListener(RmqMessagingGatewayConnection connection, string channelName)
+        public QueueFactory(RmqMessagingGatewayConnection connection, string channelName, params string[] routingKeys)
         {
+            _connection = connection;
             _channelName = channelName;
-            _connectionFactory = new ConnectionFactory {Uri = connection.AmpqUri.Uri.ToString()};
-            _connection = _connectionFactory.CreateConnection();
-            _channel = _connection.CreateModel();
-            _channel.DeclareExchangeForConnection(connection);
-            _channel.QueueDeclare(_channelName, false, false, false, null);
-            _channel.QueueBind(_channelName, connection.Exchange.Name, _channelName);
+            _routingKeys = routingKeys;
         }
 
-        public BasicGetResult Listen(int waitForMilliseconds = 0, bool suppressDisposal = false)
+        public void Create(int timeToDelayForCreationInMilliseconds)
         {
-            try
+            var connectionFactory = new ConnectionFactory {Uri = _connection.AmpqUri.Uri};
+            using (var connection = connectionFactory.CreateConnection())
             {
-                if (waitForMilliseconds > 0)
-                    Task.Delay(waitForMilliseconds).Wait();
-
-                var result = _channel.BasicGet(_channelName, true);
-                if (result != null)
+                using (var channel = connection.CreateModel())
                 {
-                    _channel.BasicAck(result.DeliveryTag, false);
-                    return result;
+                    channel.DeclareExchangeForConnection(_connection);
+                    channel.QueueDeclare(_channelName, false, false, false, null);
+                    if (_routingKeys.Any())
+                    {
+                        foreach (var routingKey in _routingKeys)
+                            channel.QueueBind(_channelName, _connection.Exchange.Name, routingKey);
+                    }
+                    else
+                    {
+                        channel.QueueBind(_channelName, _connection.Exchange.Name, _channelName);
+                    }
+
                 }
             }
-            finally
-            {
-                if (!suppressDisposal)
-                {
-                    //Added wait as rabbit needs some time to sort it self out and the close and dispose was happening to quickly
-                    Task.Delay(200).Wait();
-                    _channel.Dispose();
-                    if (_connection.IsOpen) _connection.Dispose();
-                }
-            }
-            return null;
+
+            //We need to delay to actually create these queues before we send to them
+            Task.Delay(timeToDelayForCreationInMilliseconds).Wait();
         }
     }
+}    
 
-    internal static class TestRMQExtensions
-    {
-        public static string GetBody(this BasicGetResult result)
-        {
-            return result == null ? null : Encoding.UTF8.GetString(result.Body);
-        }
-
-        public static IDictionary<string, object> GetHeaders(this BasicGetResult result)
-        {
-            return result == null ? null : result.BasicProperties.Headers;
-        }
-    }
-}

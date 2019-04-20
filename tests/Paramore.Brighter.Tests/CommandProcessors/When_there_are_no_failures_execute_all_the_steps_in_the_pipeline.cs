@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -24,6 +24,7 @@ THE SOFTWARE. */
 
 using FluentAssertions;
 using Paramore.Brighter.Tests.CommandProcessors.TestDoubles;
+using Polly.Registry;
 using TinyIoC;
 using Xunit;
 
@@ -46,6 +47,7 @@ namespace Paramore.Brighter.Tests.CommandProcessors
             container.Register<IHandleRequests<MyCommand>, MyLoggingHandler<MyCommand>>();
 
             _commandProcessor = new CommandProcessor(registry, handlerFactory, new InMemoryRequestContextFactory(), new PolicyRegistry());
+            PipelineBuilder<MyCommand>.ClearPipelineCache();
         }
 
         [Fact]

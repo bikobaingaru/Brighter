@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2015 Toby Henderson <hendersont@gmail.com>
 
@@ -32,14 +32,10 @@ namespace Paramore.Brighter
     public interface IAmAMessageConsumerFactory
     {
         /// <summary>
-        /// Creates the specified queue name.
+        /// Creates a consumer for the specified queue.
         /// </summary>
-        /// <param name="channelName">Name of the channel.</param>
-        /// <param name="routingKey">The routing key.</param>
-        /// <param name="isDurable">Is the consumer target durable i.e. channel stores messages between restarts of consumer</param>
-        /// <param name="preFetchSize">0="Don't send me a new message until I?ve finished",  1= "Send me one message at a time", n = number to grab (take care with competing consumers)</param>
-        /// <param name="highAvailability">Does the queue exist in multiple nodes</param>
-        /// <returns>IAmAMessageConsumer.</returns>
-        IAmAMessageConsumer Create(string channelName, string routingKey, bool isDurable, ushort preFetchSize, bool highAvailability);
+        /// <param name="connection">The queue to connect to</param>
+        /// <returns>IAmAMessageConsumer</returns>
+        IAmAMessageConsumer Create(Connection connection);
     }
 }

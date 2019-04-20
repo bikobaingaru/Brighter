@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -28,11 +28,11 @@ using System.Linq;
 using FluentAssertions;
 using Xunit;
 using Paramore.Brighter.MessagingGateway.RMQ;
-using Paramore.Brighter.MessagingGateway.RMQ.MessagingGatewayConfiguration;
 using Paramore.Brighter.ServiceActivator;
 using Paramore.Brighter.Tests.CommandProcessors.TestDoubles;
 using Paramore.Brighter.Tests.MessageDispatch.TestDoubles;
 using Polly;
+using Polly.Registry;
 using TinyIoC;
 
 namespace Paramore.Brighter.Tests.MessageDispatch
@@ -44,7 +44,7 @@ namespace Paramore.Brighter.Tests.MessageDispatch
 
         public DispatchBuilderTests()
         {
-            var messageMapperRegistry = new MessageMapperRegistry(new SimpleMessageMapperFactory(() => new MyEventMessageMapper()));
+            var messageMapperRegistry = new MessageMapperRegistry(new SimpleMessageMapperFactory((_) => new MyEventMessageMapper()));
             messageMapperRegistry.Register<MyEvent, MyEventMessageMapper>();
 
             var retryPolicy = Policy
@@ -82,7 +82,7 @@ namespace Paramore.Brighter.Tests.MessageDispatch
             _builder = DispatchBuilder.With()
                 .CommandProcessor(commandProcessor)
                 .MessageMappers(messageMapperRegistry)
-                .DefaultChannelFactory(new InputChannelFactory(rmqMessageConsumerFactory))
+                .DefaultChannelFactory(new ChannelFactory(rmqMessageConsumerFactory))
                 .Connections(new []
                 {
                     new Connection<MyEvent>(

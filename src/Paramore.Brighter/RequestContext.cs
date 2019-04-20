@@ -1,4 +1,4 @@
-#region Licence
+﻿#region Licence
 /* The MIT License (MIT)
 Copyright © 2014 Ian Cooper <ian_hammond_cooper@yahoo.co.uk>
 
@@ -23,6 +23,8 @@ THE SOFTWARE. */
 #endregion
 
 using System.Collections.Generic;
+using Paramore.Brighter.FeatureSwitch;
+using Polly.Registry;
 
 namespace Paramore.Brighter
 {
@@ -51,6 +53,10 @@ namespace Paramore.Brighter
         /// Gets the policies.
         /// </summary>
         /// <value>The policies.</value>
-        public IAmAPolicyRegistry Policies { get; set; }
+        public IPolicyRegistry<string>  Policies { get; set; }
+        /// <summary>
+        /// Gets the Feature Switches
+        /// </summary>
+        public IAmAFeatureSwitchRegistry FeatureSwitches { get; set; }
     }
 }

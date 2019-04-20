@@ -31,7 +31,8 @@ namespace Paramore.Brighter
     /// <summary>
     /// Class ControlBusSenderFactory. Helper for creating instances of a control bus (which requires messaging, but not subcribers).
     /// </summary>
-    public class ControlBusSenderFactory : IAmAControlBusSenderFactory {
+    public class ControlBusSenderFactory : IAmAControlBusSenderFactory
+    {
         /// <summary>
         /// Creates the specified configuration.
         /// </summary>
@@ -39,9 +40,9 @@ namespace Paramore.Brighter
         /// <param name="logger">The logger to use</param>
         /// <param name="messageStore">The message store for outgoing messages to the control bus</param>
         /// <returns>IAmAControlBusSender.</returns>
-        public IAmAControlBusSender Create(IAmAMessageStore<Message> messageStore, IAmAMessageProducer gateway)
+        public IAmAControlBusSender Create(IAmAnOutbox<Message> messageStore, IAmAMessageProducer gateway)
         {
-            var mapper = new MessageMapperRegistry(new SimpleMessageMapperFactory(() => new MonitorEventMessageMapper()));
+            var mapper = new MessageMapperRegistry(new SimpleMessageMapperFactory((_) => new MonitorEventMessageMapper()));
             mapper.Register<MonitorEvent, MonitorEventMessageMapper>();
 
             return new ControlBusSender(CommandProcessorBuilder.With()

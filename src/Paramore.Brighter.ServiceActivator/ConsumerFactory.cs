@@ -22,6 +22,8 @@ THE SOFTWARE. */
 
 #endregion
 
+using System;
+
 namespace Paramore.Brighter.ServiceActivator
 {
     internal class ConsumerFactory<TRequest> : IConsumerFactory where TRequest : class, IRequest
@@ -29,17 +31,19 @@ namespace Paramore.Brighter.ServiceActivator
         private readonly IAmACommandProcessor _commandProcessor;
         private readonly IAmAMessageMapperRegistry _messageMapperRegistry;
         private readonly Connection _connection;
+        private readonly ConsumerName _consumerName;
 
         public ConsumerFactory(IAmACommandProcessor commandProcessor, IAmAMessageMapperRegistry messageMapperRegistry, Connection connection)
         {
             _commandProcessor = commandProcessor;
             _messageMapperRegistry = messageMapperRegistry;
             _connection = connection;
+            _consumerName = new ConsumerName($"{_connection.Name}-{Guid.NewGuid()}");
         }
 
         public Consumer Create()
         {
-            var channel = _connection.ChannelFactory.CreateInputChannel(_connection.ChannelName, _connection.RoutingKey, _connection.IsDurable, highAvailability: _connection.HighAvailability);
+            var channel = _connection.ChannelFactory.CreateChannel(_connection);
             var messagePump = new MessagePump<TRequest>(_commandProcessor, _messageMapperRegistry.Get<TRequest>())
             {
                 Channel = channel,
@@ -49,12 +53,12 @@ namespace Paramore.Brighter.ServiceActivator
                 UnacceptableMessageLimit = _connection.UnacceptableMessageLimit
             };
 
-            return new Consumer(_connection.Name, channel, messagePump);
+            return new Consumer(_consumerName, _connection.Name, channel, messagePump);
         }
 
         public Consumer CreateAsync()
         {
-            var channel = _connection.ChannelFactory.CreateInputChannel(_connection.ChannelName, _connection.RoutingKey, _connection.IsDurable, highAvailability: _connection.HighAvailability);
+            var channel = _connection.ChannelFactory.CreateChannel(_connection);
             var messagePump = new MessagePumpAsync<TRequest>(_commandProcessor, _messageMapperRegistry.Get<TRequest>())
             {
                 Channel = channel,
@@ -64,7 +68,7 @@ namespace Paramore.Brighter.ServiceActivator
                 UnacceptableMessageLimit = _connection.UnacceptableMessageLimit
             };
 
-            return new Consumer(_connection.Name, channel, messagePump);
+            return new Consumer(_consumerName, _connection.Name, channel, messagePump);
         }
     }
 }

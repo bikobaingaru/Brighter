@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Newtonsoft.Json;
@@ -7,6 +7,7 @@ using Paramore.Brighter.ServiceActivator;
 using Paramore.Brighter.ServiceActivator.TestHelpers;
 using Paramore.Brighter.Tests.CommandProcessors.TestDoubles;
 using Paramore.Brighter.Tests.MessageDispatch.TestDoubles;
+using Polly.Registry;
 
 namespace Paramore.Brighter.Tests.MessageDispatch
 {
@@ -32,9 +33,9 @@ namespace Paramore.Brighter.Tests.MessageDispatch
             _messagePump = new MessagePumpAsync<MyEvent>(commandProcessor, mapper) { Channel = channel, TimeoutInMilliseconds = 5000 };
 
             var message = new Message(new MessageHeader(Guid.NewGuid(), "MyTopic", MessageType.MT_EVENT), new MessageBody(JsonConvert.SerializeObject(_myEvent)));
-            channel.Add(message);
+            channel.Enqueue(message);
             var quitMessage = new Message(new MessageHeader(Guid.Empty, "", MessageType.MT_QUIT), new MessageBody(""));
-            channel.Add(quitMessage);
+            channel.Enqueue(quitMessage);
         }
 
         [Fact(Skip = "Failing due to threading issues on Xunit tests")]
